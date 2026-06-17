@@ -248,7 +248,7 @@
           "conditions": [
             {
               "id": "e3735779-dd7f-4e44-a1f5-25bbc74054e2",
-              "leftValue": "={{ (() => { const q = String($json.query || '').toLowerCase(); let seed = []; try { seed = [String($('Webhook').item.json.keyword || '').toLowerCase().trim()].filter(Boolean); } catch(e) { try { seed = $('List Focus Keyword').all().map(i => String(i.json.keyword || '').toLowerCase().trim()).filter(Boolean); } catch(err) { seed = []; } } const esc = s => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'); const terms = [...new Set(seed)].filter(t => t.length > 1); return terms.some(t => new RegExp('\\\\b' + esc(t) + '\\\\b', 'i').test(q)); })() }}",
+              "leftValue": "={{ (() => { const q = String($json.query || '').toLowerCase(); let seed = []; try { seed = [String($('Webhook').item.json.body?.keyword || $('Webhook').item.json.keyword || '').toLowerCase().trim()].filter(Boolean); } catch(e) { try { seed = $('List Focus Keyword').all().map(i => String(i.json.keyword || '').toLowerCase().trim()).filter(Boolean); } catch(err) { seed = []; } } const esc = s => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'); const terms = [...new Set(seed)].filter(t => t.length > 1); return terms.some(t => new RegExp('\\\\b' + esc(t) + '\\\\b', 'i').test(q)); })() }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
