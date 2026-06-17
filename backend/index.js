@@ -401,7 +401,7 @@ app.delete('/api/whatsapp/pending-reviews', async (req, res) => {
  * Endpoint: Run Keyword Automation
  */
 app.post('/api/automation/run', async (req, res) => {
-  const { keyword, Geo, Ln, Client_Name, CMS_Type, Telegram_Chat_ID, n8nUrl: customN8nUrl, waApprover, waPhone } = req.body;
+  const { keyword, Geo, Ln, Client_Name, CMS_Type, Telegram_Chat_ID, n8nUrl: customN8nUrl, waApprover, waPhone, projectId } = req.body;
   
   log(`Menerima trigger automasi kata kunci: "${keyword}"`);
   
@@ -425,6 +425,7 @@ app.post('/api/automation/run', async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     const article = getSimulatedArticle(keyword, Geo, Ln, CMS_Type);
+    article.projectId = projectId || '';
     
     if (waApprover && cleanPhone) {
       let savedDb = false;
@@ -492,8 +493,9 @@ Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* u
       });
     } else {
       const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
+      const projId = projectId || 'mwwvwgiw';
       const draftUrl = CMS_Type === 'sanity' 
-        ? `https://mwwvwgiw.sanity.studio/desk/post;${draftId}`
+        ? `https://${projId}.sanity.studio/desk/post;${draftId}`
         : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
       
       return res.json({
@@ -675,8 +677,9 @@ Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* u
       });
     } else {
       const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
+      const projId = projectId || 'mwwvwgiw';
       const draftUrl = CMS_Type === 'sanity' 
-        ? `https://mwwvwgiw.sanity.studio/desk/post;${draftId}`
+        ? `https://${projId}.sanity.studio/desk/post;${draftId}`
         : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
       
       return res.json({
@@ -696,7 +699,7 @@ Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* u
 app.post('/api/automation/publish', async (req, res) => {
   log(`Menerima request pemublikasian draf artikel.`);
   
-  const { article, clientName, telegramChatId, cmsType, n8nUrl: customN8nUrl, waPhone } = req.body;
+  const { article, clientName, telegramChatId, cmsType, n8nUrl: customN8nUrl, waPhone, projectId } = req.body;
 
   // Resolve target publish webhook
   let targetUrl = process.env.N8N_URL_PUBLISH;
@@ -738,8 +741,9 @@ app.post('/api/automation/publish', async (req, res) => {
     log(`[Simulator] Simulasi penerbitan artikel draf.`);
     await new Promise(resolve => setTimeout(resolve, 1000));
     const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
+    const projId = projectId || article?.projectId || 'mwwvwgiw';
     const draftUrl = cmsType === 'sanity' 
-      ? `https://mwwvwgiw.sanity.studio/desk/post;${draftId}`
+      ? `https://${projId}.sanity.studio/desk/post;${draftId}`
       : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
 
     return res.json({
@@ -779,8 +783,9 @@ app.post('/api/automation/publish', async (req, res) => {
   } catch (error) {
     log(`[Error Fetch] Gagal menghubungi n8n publish: ${error.message}. Menggunakan fallback simulator.`);
     const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
+    const projId = projectId || article?.projectId || 'mwwvwgiw';
     const draftUrl = cmsType === 'sanity' 
-      ? `https://mwwvwgiw.sanity.studio/desk/post;${draftId}`
+      ? `https://${projId}.sanity.studio/desk/post;${draftId}`
       : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
 
     res.json({
@@ -894,8 +899,9 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       
       setTimeout(async () => {
         const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
+        const projId = pendingReview.article?.projectId || 'mwwvwgiw';
         const draftUrl = pendingReview.cmsType === 'sanity'
-          ? `https://mwwvwgiw.sanity.studio/desk/post;${draftId}`
+          ? `https://${projId}.sanity.studio/desk/post;${draftId}`
           : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
 
         if (useSupabase) {

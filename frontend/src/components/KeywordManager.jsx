@@ -103,7 +103,8 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
         Telegram_Chat_ID: creds.tgChatId || "",
         n8nUrl: n8nUrl || "", // Forward browser configuration if available
         waApprover: waApproverEnabled,
-        waPhone: waPhone
+        waPhone: waPhone,
+        projectId: creds.projectId || ""
       })
     })
     .then(async (res) => {
@@ -265,7 +266,8 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
         cmsType: drawerKeyword.cms,
         article: updatedArticle,
         n8nUrl: n8nUrl || "", // Forward custom configuration to backend
-        waPhone: waPhone // Clear pending review on backend if active
+        waPhone: waPhone, // Clear pending review on backend if active
+        projectId: creds.projectId || ""
       })
     })
     .then(async (res) => {
