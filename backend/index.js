@@ -474,6 +474,16 @@ app.post('/api/automation/run', async (req, res) => {
     const item = Array.isArray(responseData) ? responseData[0] : responseData;
     articlePayload = item?.article || item?.json?.article || item;
 
+    // Check if the workflow finished successfully and generated/published an article
+    const draftUrl = responseData?.draftEditUrl || responseData?.json?.draftEditUrl || item?.draftEditUrl || item?.json?.draftEditUrl;
+    if ((!articlePayload || (!articlePayload.title && !articlePayload.bodyMarkdown)) && !draftUrl) {
+      log(`[Warning] Workflow n8n berhenti awal atau tidak menghasilkan draf.`);
+      return res.status(422).json({
+        success: false,
+        message: 'Kriteria kata kunci tidak memenuhi syarat (Workflow n8n berhenti awal, misal: pencarian volume rendah atau tidak lolos penyaringan kecocokan kata kunci).'
+      });
+    }
+
     if (waApprover && cleanPhone && articlePayload) {
       let savedDb = false;
       if (supabase) {

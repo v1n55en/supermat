@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Plus, Search, CheckCircle, Clock, RefreshCw, Terminal, ArrowUpRight } from 'lucide-react';
+import { Play, Plus, Search, CheckCircle, Clock, RefreshCw, Terminal, ArrowUpRight, Trash2 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
 
@@ -63,6 +63,15 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
     setKeywords(updated);
     localStorage.setItem('supermat_keywords', JSON.stringify(updated));
     setNewKeyword('');
+  };
+
+  const deleteKeyword = (id) => {
+    if (runningId === id) return;
+    setKeywords(prev => {
+      const updated = prev.filter(k => k.id !== id);
+      localStorage.setItem('supermat_keywords', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const runAutomation = (id) => {
@@ -559,6 +568,16 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
                                 <Play size={14} fill="currentColor" />
                               )}
                               Jalankan
+                            </button>
+                          )}
+                          {runningId !== kw.id && (
+                            <button
+                              onClick={() => deleteKeyword(kw.id)}
+                              className="btn btn-secondary"
+                              title="Hapus Kata Kunci"
+                              style={{ ...styles.playBtn, minWidth: 'auto', padding: '0.5rem', backgroundColor: 'transparent', borderColor: 'var(--border-color)', color: '#ef4444' }}
+                            >
+                              <Trash2 size={14} />
                             </button>
                           )}
                         </div>
