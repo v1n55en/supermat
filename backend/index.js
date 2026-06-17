@@ -102,12 +102,15 @@ const sendWhatsAppMessage = async (phone, message) => {
     return { status: false, error: error.message };
   }
 };
-
-// Allow CORS from our Vite development frontend
+// Allow CORS from localhost and Vercel domains
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Dynamic origin reflection allows both dev localhost and production vercel.app domains
+    callback(null, true);
+  },
   credentials: true
 }));
+
 
 app.use(express.json());
 
