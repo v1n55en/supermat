@@ -713,7 +713,7 @@ Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* u
 app.post('/api/automation/publish', async (req, res) => {
   log(`Menerima request pemublikasian draf artikel.`);
   
-  const { article, clientName, telegramChatId, cmsType, n8nUrl: customN8nUrl, waPhone, projectId } = req.body;
+  const { article, clientName, telegramChatId, cmsType, n8nUrl: customN8nUrl, waPhone, projectId, studioUrl } = req.body;
 
   // Resolve target publish webhook
   let targetUrl = process.env.N8N_URL_PUBLISH;
