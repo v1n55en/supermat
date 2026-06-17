@@ -21,6 +21,19 @@ const log = (msg) => {
   console.log(`[${time}] ${msg}`);
 };
 
+// Helper to generate Sanity Studio draft URL dynamically (supports project ID or full base URL)
+const getSanityDraftUrl = (projId, draftId) => {
+  const baseId = projId ? projId.trim() : 'mwwvwgiw';
+  if (baseId.startsWith('http://') || baseId.startsWith('https://')) {
+    const base = baseId.replace(/\/+$/, '');
+    if (base.includes('/structure/post') || base.includes('/desk/post')) {
+      return `${base};${draftId}`;
+    }
+    return `${base}/structure/post;${draftId}`;
+  }
+  return `https://${baseId}.sanity.studio/desk/post;${draftId}`;
+};
+
 // Initialize Supabase Client
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
@@ -493,9 +506,8 @@ Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* u
       });
     } else {
       const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
-      const projId = projectId || 'mwwvwgiw';
       const draftUrl = CMS_Type === 'sanity' 
-        ? `https://${projId}.sanity.studio/desk/post;${draftId}`
+        ? getSanityDraftUrl(projectId, draftId)
         : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
       
       return res.json({
@@ -677,9 +689,8 @@ Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* u
       });
     } else {
       const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
-      const projId = projectId || 'mwwvwgiw';
       const draftUrl = CMS_Type === 'sanity' 
-        ? `https://${projId}.sanity.studio/desk/post;${draftId}`
+        ? getSanityDraftUrl(projectId, draftId)
         : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
       
       return res.json({
@@ -741,9 +752,8 @@ app.post('/api/automation/publish', async (req, res) => {
     log(`[Simulator] Simulasi penerbitan artikel draf.`);
     await new Promise(resolve => setTimeout(resolve, 1000));
     const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
-    const projId = projectId || article?.projectId || 'mwwvwgiw';
     const draftUrl = cmsType === 'sanity' 
-      ? `https://${projId}.sanity.studio/desk/post;${draftId}`
+      ? getSanityDraftUrl(projectId || article?.projectId, draftId)
       : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
 
     return res.json({
@@ -783,9 +793,8 @@ app.post('/api/automation/publish', async (req, res) => {
   } catch (error) {
     log(`[Error Fetch] Gagal menghubungi n8n publish: ${error.message}. Menggunakan fallback simulator.`);
     const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
-    const projId = projectId || article?.projectId || 'mwwvwgiw';
     const draftUrl = cmsType === 'sanity' 
-      ? `https://${projId}.sanity.studio/desk/post;${draftId}`
+      ? getSanityDraftUrl(projectId || article?.projectId, draftId)
       : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
 
     res.json({
@@ -899,9 +908,8 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       
       setTimeout(async () => {
         const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
-        const projId = pendingReview.article?.projectId || 'mwwvwgiw';
         const draftUrl = pendingReview.cmsType === 'sanity'
-          ? `https://${projId}.sanity.studio/desk/post;${draftId}`
+          ? getSanityDraftUrl(pendingReview.article?.projectId, draftId)
           : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
 
         if (useSupabase) {
