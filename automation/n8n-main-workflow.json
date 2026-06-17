@@ -248,7 +248,7 @@
           "conditions": [
             {
               "id": "e3735779-dd7f-4e44-a1f5-25bbc74054e2",
-              "leftValue": "={{ (() => { const q = String($json.query || '').toLowerCase(); let seed = []; try { seed = [String($('Webhook').item.json.body?.keyword || $('Webhook').item.json.keyword || '').toLowerCase().trim()].filter(Boolean); } catch(e) { try { seed = $('List Focus Keyword').all().map(i => String(i.json.keyword || '').toLowerCase().trim()).filter(Boolean); } catch(err) { seed = []; } } const esc = s => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'); const terms = [...new Set(seed)].filter(t => t.length > 1); return terms.some(t => new RegExp('\\\\b' + esc(t) + '\\\\b', 'i').test(q)); })() }}",
+              "leftValue": "=(() => {\n  const q = String($json.query || '').toLowerCase();\n  let seed = [];\n  try {\n    const raw = String($('Webhook').item.json.body?.keyword || $('Webhook').item.json.keyword || '').toLowerCase().trim();\n    if (raw) seed.push(raw);\n  } catch(e) {\n    try {\n      seed = $('List Focus Keyword').all().map(i => String(i.json.keyword || '').toLowerCase().trim()).filter(Boolean);\n    } catch(err) {\n      seed = [];\n    }\n  }\n  const stopWords = new Set(['di', 'ke', 'dari', 'yang', 'dan', 'untuk', 'dengan', 'ada', 'adalah', 'itu', 'ini', 'makanan', 'kuliner', 'minuman', 'resep', 'cara', 'tips', 'info']);\n  const terms = [];\n  seed.forEach(phrase => {\n    terms.push(phrase);\n    phrase.split(/\\s+/).forEach(word => {\n      const clean = word.replace(/[^a-z0-9]/g, '');\n      if (clean.length > 2 && !stopWords.has(clean)) {\n        terms.push(clean);\n      }\n    });\n  });\n  const uniqueTerms = [...new Set(terms)].filter(Boolean);\n  const esc = s => s.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, '\\\\$&');\n  return uniqueTerms.some(t => {\n    if (t.includes(' ')) {\n      return q.includes(t);\n    } else {\n      return new RegExp('\\\\b' + esc(t) + '\\\\b', 'i').test(q);\n    }\n  });\n})()",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -319,7 +319,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract AI response content and assemble Unified Payload\nconst aiInput = $('AI Agent').item.json;\nlet clientInfo = {};\ntry {\n  const rawInfo = $('Webhook').item.json;\n  clientInfo = rawInfo.body || rawInfo;\n} catch (err) {\n  const rawInput = $input.all()[0]?.json || {};\n  clientInfo = rawInput.body || rawInput;\n}\n\n// Safe parse JSON from AI agent\nfunction safeParseJson(str) {\n  if (!str) return null;\n  try {\n    if (typeof str === 'object') return str;\n    const clean = str.replace(/```json/gi,\"\").replace(/```/g,\"\").trim();\n    const start = clean.indexOf('{');\n    const end = clean.lastIndexOf('}');\n    return JSON.parse(clean.slice(start, end + 1));\n  } catch (e) {\n    return null;\n  }\n}\n\nconst parsed = safeParseJson(aiInput.output ?? aiInput);\nconst kw = clientInfo.keyword || clientInfo.query || \"Keyword Utama\";\n\nreturn [{\n  json: {\n    clientName: clientInfo.Client_Name || \"Supermat Client\",\n    telegramChatId: clientInfo.Telegram_Chat_ID || \"\",\n    cmsType: (clientInfo.CMS_Type || \"sanity\").toLowerCase().trim(),\n    article: {\n      title: parsed?.title || \"Draft Article\",\n      slug: parsed?.slug || \"draft-article\",\n      excerpt: parsed?.excerpt || \"\",\n      bodyMarkdown: parsed?.body || \"\",\n      keywords: [kw],\n      primaryKeyword: kw,\n      searchVolume: $('Riset SVolume').item.json.data?.globalSearchVolume || 0,\n      difficulty: $('Riset SVolume').item.json.data?.difficulty || 0\n    }\n  }\n}];"
+        "jsCode": "// Extract AI response content and assemble Unified Payload\nconst aiInput = $('AI Agent').item.json;\nlet clientInfo = {};\ntry {\n  const rawInfo = $('Webhook').item.json;\n  clientInfo = rawInfo.body || rawInfo;\n} catch (err) {\n  const rawInput = $input.all()[0]?.json || {};\n  clientInfo = rawInput.body || rawInput;\n}\n\n// Safe parse JSON from AI agent\nfunction safeParseJson(str) {\n  if (!str) return null;\n  try {\n    if (typeof str === 'object') return str;\n    const clean = str.replace(/```json/gi,\"\").replace(/```/g,\"\").trim();\n    const start = clean.indexOf('{');\n    const end = clean.lastIndexOf('}');\n    return JSON.parse(clean.slice(start, end + 1));\n  } catch (e) {\n    return null;\n  }\n}\n\nconst parsed = safeParseJson(aiInput.output ?? aiInput);\nconst kw = clientInfo.keyword || clientInfo.query || \"Keyword Utama\";\n\nreturn [{\n  json: {\n    clientName: clientInfo.Client_Name || \"Supermat Client\",\n    telegramChatId: clientInfo.Telegram_Chat_ID || \"\",\n    cmsType: (clientInfo.CMS_Type || \"sanity\").toLowerCase().trim(),\n    article: {\n      title: parsed?.title || \"Draft Article\",\n      slug: parsed?.slug || \"draft-article\",\n      excerpt: parsed?.excerpt || \"\",\n      bodyMarkdown: parsed?.body || \"\",\n      keywords: [kw],\n      primaryKeyword: kw,\n      searchVolume: (() => { try { return $('Riset SVolume').item.json.data?.globalSearchVolume || 0; } catch(e) { return 0; } })(),\n      difficulty: (() => { try { return $('Riset SVolume').item.json.data?.difficulty || 0; } catch(e) { return 0; } })()\n    }\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -426,6 +426,55 @@
       ],
       "id": "publish-webhook-trigger",
       "name": "Publish Webhook"
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "data.keyword",
+              "value": "={{ $json.body?.keyword || $json.keyword }}"
+            }
+          ],
+          "number": [
+            {
+              "name": "data.globalSearchVolume",
+              "value": 0
+            },
+            {
+              "name": "data.difficulty",
+              "value": 0
+            },
+            {
+              "name": "data.trafficPotential",
+              "value": 0
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        320,
+        200
+      ],
+      "id": "prep-fallback",
+      "name": "Prep Fallback"
+    },
+    {
+      "parameters": {
+        "jsCode": "const primary = $input.all(0);\nconst fallback = $input.all(1);\nif (primary && primary.length > 0 && primary[0].json?.data?.keyword) {\n  return primary;\n}\nreturn fallback;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        340
+      ],
+      "id": "resolve-target",
+      "name": "Resolve Target"
     }
   ],
   "pinData": {},
@@ -546,7 +595,7 @@
       "main": [
         [
           {
-            "node": "AI Agent",
+            "node": "Resolve Target",
             "type": "main",
             "index": 0
           }
@@ -558,6 +607,11 @@
         [
           {
             "node": "Riset Google Trends",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Fallback",
             "type": "main",
             "index": 0
           }
@@ -627,6 +681,28 @@
         [
           {
             "node": "Execute Telegram Notifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Fallback": {
+      "main": [
+        [
+          {
+            "node": "Resolve Target",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Resolve Target": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
             "type": "main",
             "index": 0
           }
