@@ -21,17 +21,19 @@ const log = (msg) => {
   console.log(`[${time}] ${msg}`);
 };
 
-// Helper to generate Sanity Studio draft URL dynamically (supports project ID or full base URL)
-const getSanityDraftUrl = (projId, draftId) => {
+// Helper to generate Sanity Studio draft URL dynamically (supports project ID, full base URL, or custom studio URL)
+const getSanityDraftUrl = (projId, draftId, studioUrl) => {
   const baseId = projId ? projId.trim() : 'mwwvwgiw';
-  if (baseId.startsWith('http://') || baseId.startsWith('https://')) {
-    const base = baseId.replace(/\/+$/, '');
+  const urlSource = (studioUrl && studioUrl.trim()) ? studioUrl.trim() : baseId;
+  
+  if (urlSource.startsWith('http://') || urlSource.startsWith('https://')) {
+    const base = urlSource.replace(/\/+$/, '');
     if (base.includes('/structure/post') || base.includes('/desk/post')) {
       return `${base};${draftId}`;
     }
     return `${base}/structure/post;${draftId}`;
   }
-  return `https://${baseId}.sanity.studio/desk/post;${draftId}`;
+  return `https://${baseId}.sanity.studio/structure/post;${draftId}`;
 };
 
 // Initialize Supabase Client
@@ -414,7 +416,7 @@ app.delete('/api/whatsapp/pending-reviews', async (req, res) => {
  * Endpoint: Run Keyword Automation
  */
 app.post('/api/automation/run', async (req, res) => {
-  const { keyword, Geo, Ln, Client_Name, CMS_Type, Telegram_Chat_ID, n8nUrl: customN8nUrl, waApprover, waPhone, projectId } = req.body;
+  const { keyword, Geo, Ln, Client_Name, CMS_Type, Telegram_Chat_ID, n8nUrl: customN8nUrl, waApprover, waPhone, projectId, studioUrl } = req.body;
   
   log(`Menerima trigger automasi kata kunci: "${keyword}"`);
   
@@ -439,6 +441,7 @@ app.post('/api/automation/run', async (req, res) => {
     
     const article = getSimulatedArticle(keyword, Geo, Ln, CMS_Type);
     article.projectId = projectId || '';
+    article.studioUrl = studioUrl || '';
     
     if (waApprover && cleanPhone) {
       let savedDb = false;
@@ -507,7 +510,7 @@ Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* u
     } else {
       const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
       const draftUrl = CMS_Type === 'sanity' 
-        ? getSanityDraftUrl(projectId, draftId)
+        ? getSanityDraftUrl(projectId, draftId, studioUrl)
         : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
       
       return res.json({
@@ -690,7 +693,7 @@ Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* u
     } else {
       const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
       const draftUrl = CMS_Type === 'sanity' 
-        ? getSanityDraftUrl(projectId, draftId)
+        ? getSanityDraftUrl(projectId, draftId, studioUrl)
         : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
       
       return res.json({
@@ -753,7 +756,7 @@ app.post('/api/automation/publish', async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 1000));
     const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
     const draftUrl = cmsType === 'sanity' 
-      ? getSanityDraftUrl(projectId || article?.projectId, draftId)
+      ? getSanityDraftUrl(projectId || article?.projectId, draftId, studioUrl || article?.studioUrl)
       : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
 
     return res.json({
@@ -794,7 +797,7 @@ app.post('/api/automation/publish', async (req, res) => {
     log(`[Error Fetch] Gagal menghubungi n8n publish: ${error.message}. Menggunakan fallback simulator.`);
     const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
     const draftUrl = cmsType === 'sanity' 
-      ? getSanityDraftUrl(projectId || article?.projectId, draftId)
+      ? getSanityDraftUrl(projectId || article?.projectId, draftId, studioUrl || article?.studioUrl)
       : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
 
     res.json({
@@ -909,7 +912,7 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       setTimeout(async () => {
         const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
         const draftUrl = pendingReview.cmsType === 'sanity'
-          ? getSanityDraftUrl(pendingReview.article?.projectId, draftId)
+          ? getSanityDraftUrl(pendingReview.article?.projectId, draftId, pendingReview.article?.studioUrl)
           : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
 
         if (useSupabase) {

@@ -104,7 +104,8 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
         n8nUrl: n8nUrl || "", // Forward browser configuration if available
         waApprover: waApproverEnabled,
         waPhone: waPhone,
-        projectId: creds.projectId || ""
+        projectId: creds.projectId || "",
+        studioUrl: creds.studioUrl || ""
       })
     })
     .then(async (res) => {
@@ -267,7 +268,8 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
         article: updatedArticle,
         n8nUrl: n8nUrl || "", // Forward custom configuration to backend
         waPhone: waPhone, // Clear pending review on backend if active
-        projectId: creds.projectId || ""
+        projectId: creds.projectId || "",
+        studioUrl: creds.studioUrl || ""
       })
     })
     .then(async (res) => {

@@ -8,6 +8,7 @@ export default function CmsSettings({ user, plan, onPlanChange }) {
   const [projectId, setProjectId] = useState('');
   const [dataset, setDataset] = useState('production');
   const [authToken, setAuthToken] = useState('');
+  const [studioUrl, setStudioUrl] = useState('');
   
   const [wpUrl, setWpUrl] = useState('');
   const [wpUser, setWpUser] = useState('');
@@ -46,6 +47,7 @@ export default function CmsSettings({ user, plan, onPlanChange }) {
       setProjectId(parsed.projectId || '');
       setDataset(parsed.dataset || 'production');
       setAuthToken(parsed.authToken || '');
+      setStudioUrl(parsed.studioUrl || '');
       setWpUrl(parsed.wpUrl || '');
       setWpUser(parsed.wpUser || '');
       setWpPass(parsed.wpPass || '');
@@ -173,6 +175,7 @@ export default function CmsSettings({ user, plan, onPlanChange }) {
       projectId,
       dataset,
       authToken,
+      studioUrl,
       wpUrl,
       wpUser,
       wpPass,
@@ -251,6 +254,17 @@ export default function CmsSettings({ user, plan, onPlanChange }) {
                     onChange={(e) => setProjectId(e.target.value)}
                     required
                   />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Sanity Studio URL (Opsional)</label>
+                  <input 
+                    type="url" 
+                    className="form-input" 
+                    placeholder="Contoh: https://www.sanity.io/@username/studio/project-id/default" 
+                    value={studioUrl}
+                    onChange={(e) => setStudioUrl(e.target.value)}
+                  />
+                  <span style={styles.infoSpan}>Gunakan jika Studio di-host di Sanity Cloud/Domain kustom. Jika kosong, default ke domain sanity.studio standard.</span>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Dataset</label>
