@@ -30,15 +30,15 @@
           "parameters": [
             {
               "name": "q",
-              "value": "={{ $json.keyword || $json.query }}"
+              "value": "={{ $json.body?.keyword || $json.body?.query || $json.keyword || $json.query }}"
             },
             {
               "name": "geo",
-              "value": "={{ $json.Geo || 'ID' }}"
+              "value": "={{ $json.body?.Geo || $json.Geo || 'ID' }}"
             },
             {
               "name": "ln",
-              "value": "={{ $json.Ln || 'id' }}"
+              "value": "={{ $json.body?.Ln || $json.Ln || 'id' }}"
             },
             {
               "name": "date",
@@ -319,7 +319,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract AI response content and assemble Unified Payload\nconst aiInput = $('AI Agent').item.json;\nlet clientInfo = {};\ntry {\n  clientInfo = $('Webhook').item.json;\n} catch (err) {\n  clientInfo = $input.all()[0]?.json || {};\n}\n\n// Safe parse JSON from AI agent\nfunction safeParseJson(str) {\n  if (!str) return null;\n  try {\n    if (typeof str === 'object') return str;\n    const clean = str.replace(/```json/gi,\"\").replace(/```/g,\"\").trim();\n    const start = clean.indexOf('{');\n    const end = clean.lastIndexOf('}');\n    return JSON.parse(clean.slice(start, end + 1));\n  } catch (e) {\n    return null;\n  }\n}\n\nconst parsed = safeParseJson(aiInput.output ?? aiInput);\nconst kw = clientInfo.keyword || \"Keyword Utama\";\n\nreturn [{\n  json: {\n    clientName: clientInfo.Client_Name || \"Supermat Client\",\n    telegramChatId: clientInfo.Telegram_Chat_ID || \"\",\n    cmsType: (clientInfo.CMS_Type || \"sanity\").toLowerCase().trim(),\n    article: {\n      title: parsed?.title || \"Draft Article\",\n      slug: parsed?.slug || \"draft-article\",\n      excerpt: parsed?.excerpt || \"\",\n      bodyMarkdown: parsed?.body || \"\",\n      keywords: [kw],\n      primaryKeyword: kw,\n      searchVolume: $('Riset SVolume').item.json.data?.globalSearchVolume || 0,\n      difficulty: $('Riset SVolume').item.json.data?.difficulty || 0\n    }\n  }\n}];"
+        "jsCode": "// Extract AI response content and assemble Unified Payload\nconst aiInput = $('AI Agent').item.json;\nlet clientInfo = {};\ntry {\n  const rawInfo = $('Webhook').item.json;\n  clientInfo = rawInfo.body || rawInfo;\n} catch (err) {\n  const rawInput = $input.all()[0]?.json || {};\n  clientInfo = rawInput.body || rawInput;\n}\n\n// Safe parse JSON from AI agent\nfunction safeParseJson(str) {\n  if (!str) return null;\n  try {\n    if (typeof str === 'object') return str;\n    const clean = str.replace(/```json/gi,\"\").replace(/```/g,\"\").trim();\n    const start = clean.indexOf('{');\n    const end = clean.lastIndexOf('}');\n    return JSON.parse(clean.slice(start, end + 1));\n  } catch (e) {\n    return null;\n  }\n}\n\nconst parsed = safeParseJson(aiInput.output ?? aiInput);\nconst kw = clientInfo.keyword || clientInfo.query || \"Keyword Utama\";\n\nreturn [{\n  json: {\n    clientName: clientInfo.Client_Name || \"Supermat Client\",\n    telegramChatId: clientInfo.Telegram_Chat_ID || \"\",\n    cmsType: (clientInfo.CMS_Type || \"sanity\").toLowerCase().trim(),\n    article: {\n      title: parsed?.title || \"Draft Article\",\n      slug: parsed?.slug || \"draft-article\",\n      excerpt: parsed?.excerpt || \"\",\n      bodyMarkdown: parsed?.body || \"\",\n      keywords: [kw],\n      primaryKeyword: kw,\n      searchVolume: $('Riset SVolume').item.json.data?.globalSearchVolume || 0,\n      difficulty: $('Riset SVolume').item.json.data?.difficulty || 0\n    }\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
