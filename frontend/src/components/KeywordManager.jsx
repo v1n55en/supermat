@@ -109,7 +109,14 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
       })
     })
     .then(async (res) => {
-      if (!res.ok) throw new Error(`Backend returned HTTP ${res.status}`);
+      if (!res.ok) {
+        let errMsg = `Backend returned HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData && errData.message) errMsg = errData.message;
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
       const responseData = await res.json();
       log(`[Backend] Hubungan sukses. Data draf diterima dari n8n.`);
       
@@ -139,9 +146,9 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
       }
     })
     .catch(err => {
-      log(`[⚠️ Warning] Gagal memicu n8n via backend (${err.message}).`);
-      log(`[Simulator] Menjalankan fallback simulator lokal...`);
-      triggerSimulationSteps(id, target, log, webApproverEnabled, waApproverEnabled, waPhone);
+      log(`[❌ Error] Gagal memicu n8n via backend (${err.message}).`);
+      updateKeywordStatus(id, 'Error');
+      setRunningId(null);
     });
   };
 
@@ -273,7 +280,14 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
       })
     })
     .then(async (res) => {
-      if (!res.ok) throw new Error(`Publish failed with status ${res.status}`);
+      if (!res.ok) {
+        let errMsg = `Publish failed with status ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData && errData.message) errMsg = errData.message; 
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
       const responseData = await res.json();
       const cms = drawerKeyword.cms || 'sanity';
       const draftUrl = responseData?.draftEditUrl || responseData?.json?.draftEditUrl || `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
@@ -290,27 +304,8 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
       setDrawerKeyword(null);
     })
     .catch(err => {
-      log(`[⚠️ Warning] Gagal memposting via backend/n8n (${err.message}).`);
-      log(`[Simulator] Menjalankan simulator publikasi lokal...`);
-      
-      setTimeout(() => {
-        const cms = drawerKeyword.cms || 'sanity';
-        const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
-        const draftUrl = cms === 'sanity' 
-          ? `https://mwwvwgiw.sanity.studio/desk/post;${draftId}`
-          : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
-
-        updateKeywordStatus(drawerKeyword.id, 'Draft Created', draftUrl, updatedArticle, false);
-        log(`[CMS] Sukses mempublikasikan draf ke ${cms.toUpperCase()}! URL Draf: ${draftUrl}`);
-        
-        if (plan === 'premium' && creds.tgApprover) {
-          log(`[Telegram] Mengirimkan pesan persetujuan ke Telegram Bot...`);
-        }
-
-        log(`✓ Artikel berhasil dipublikasikan!`);
-        setPublishingDrawer(false);
-        setDrawerKeyword(null);
-      }, 1500);
+      log(`[❌ Error] Gagal memposting via backend/n8n (${err.message}).`);
+      setPublishingDrawer(false);
     });
   };
 
@@ -428,6 +423,12 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
           </span>
         );
       case 'Draft Created': return <span className="badge badge-success">Draf Sukses</span>;
+      case 'Error':
+        return (
+          <span className="badge" style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}>
+            Gagal / Error
+          </span>
+        );
       default: return <span className="badge badge-secondary">{status}</span>;
     }
   };

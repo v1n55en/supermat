@@ -433,94 +433,12 @@ app.post('/api/automation/run', async (req, res) => {
     }
   }
 
-  const isSimulationMode = !targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '';
-
-  if (isSimulationMode) {
-    log(`[Simulator] Menjalankan simulasi riset backend untuk "${keyword}"`);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    const article = getSimulatedArticle(keyword, Geo, Ln, CMS_Type);
-    article.projectId = projectId || '';
-    article.studioUrl = studioUrl || '';
-    
-    if (waApprover && cleanPhone) {
-      let savedDb = false;
-      if (supabase) {
-        try {
-          const { error } = await supabase
-            .from('pending_reviews')
-            .upsert({
-              phone: cleanPhone,
-              keyword_id: Date.now(),
-              keyword,
-              geo: Geo,
-              ln: Ln,
-              client_name: Client_Name,
-              cms_type: CMS_Type,
-              telegram_chat_id: Telegram_Chat_ID || '',
-              n8n_url: customN8nUrl || '',
-              article,
-              status: 'pending',
-              created_at: new Date().toISOString()
-            });
-          if (error) throw error;
-          savedDb = true;
-        } catch (err) {
-          log(`[Supabase Error] Gagal upsert pending review: ${err.message}. Fallback ke database.json`);
-        }
-      }
-
-      if (!savedDb) {
-        const db = readDB();
-        db.pending_reviews = db.pending_reviews || {};
-        db.pending_reviews[cleanPhone] = {
-          keywordId: Date.now(),
-          keyword,
-          geo: Geo,
-          ln: Ln,
-          clientName: Client_Name,
-          cmsType: CMS_Type,
-          telegramChatId: Telegram_Chat_ID || '',
-          n8nUrl: customN8nUrl || '',
-          article,
-          status: 'pending',
-          createdAt: new Date().toISOString()
-        };
-        writeDB(db);
-      }
-
-      const msg = `[Supermat Approval]
-Draf artikel baru telah siap untuk ditinjau!
-
-Kata Kunci: "${keyword}"
-Judul: "${article.title}"
-Platform CMS: ${CMS_Type.toUpperCase()}
-
-Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* untuk menulis ulang artikel ini.`;
-      
-      await sendWhatsAppMessage(cleanPhone, msg);
-
-      return res.json({
-        success: true,
-        status: 'Review Ready',
-        article,
-        waPending: true,
-        message: 'Simulated review loaded. Notification sent.'
-      });
-    } else {
-      const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
-      const draftUrl = CMS_Type === 'sanity' 
-        ? getSanityDraftUrl(projectId, draftId, studioUrl)
-        : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
-      
-      return res.json({
-        success: true,
-        status: 'Draft Created',
-        draftEditUrl: draftUrl,
-        article,
-        message: 'Simulated draft created directly.'
-      });
-    }
+  if (!targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '') {
+    log(`[Error] Target URL trigger n8n tidak terkonfigurasi.`);
+    return res.status(400).json({
+      success: false,
+      message: 'Automasi n8n tidak dikonfigurasi. Harap tentukan URL trigger n8n di pengaturan.'
+    });
   }
 
   log(`Mem-forward request ke n8n: ${targetUrl}`);
@@ -623,87 +541,11 @@ Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* u
 
     res.json(responseData);
   } catch (error) {
-    log(`[Error Fetch] Gagal menghubungi n8n: ${error.message}. Menggunakan simulator fallback.`);
-    
-    const article = getSimulatedArticle(keyword, Geo, Ln, CMS_Type);
-    if (waApprover && cleanPhone) {
-      let savedDb = false;
-      if (supabase) {
-        try {
-          const { error } = await supabase
-            .from('pending_reviews')
-            .upsert({
-              phone: cleanPhone,
-              keyword_id: Date.now(),
-              keyword,
-              geo: Geo,
-              ln: Ln,
-              client_name: Client_Name,
-              cms_type: CMS_Type,
-              telegram_chat_id: Telegram_Chat_ID || '',
-              n8n_url: customN8nUrl || '',
-              article,
-              status: 'pending',
-              created_at: new Date().toISOString()
-            });
-          if (error) throw error;
-          savedDb = true;
-        } catch (err) {
-          log(`[Supabase Error] Gagal upsert pending review: ${err.message}. Fallback ke database.json`);
-        }
-      }
-
-      if (!savedDb) {
-        const db = readDB();
-        db.pending_reviews = db.pending_reviews || {};
-        db.pending_reviews[cleanPhone] = {
-          keywordId: Date.now(),
-          keyword,
-          geo: Geo,
-          ln: Ln,
-          clientName: Client_Name,
-          cmsType: CMS_Type,
-          telegramChatId: Telegram_Chat_ID || '',
-          n8nUrl: customN8nUrl || '',
-          article,
-          status: 'pending',
-          createdAt: new Date().toISOString()
-        };
-        writeDB(db);
-      }
-
-      const msg = `[Supermat Approval]
-Draf artikel baru telah siap untuk ditinjau!
-
-Kata Kunci: "${keyword}"
-Judul: "${article.title}"
-Platform CMS: ${CMS_Type.toUpperCase()}
-
-Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* untuk menulis ulang artikel ini.`;
-      
-      await sendWhatsAppMessage(cleanPhone, msg);
-
-      return res.json({
-        success: true,
-        status: 'Review Ready',
-        article,
-        waPending: true,
-        message: 'Simulated draft generated (n8n offline fallback). Notification sent.'
-      });
-    } else {
-      const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
-      const draftUrl = CMS_Type === 'sanity' 
-        ? getSanityDraftUrl(projectId, draftId, studioUrl)
-        : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
-      
-      return res.json({
-        success: true,
-        status: 'Draft Created',
-        draftEditUrl: draftUrl,
-        article,
-        message: 'Simulated draft created directly (n8n offline fallback).'
-      });
-    }
+    log(`[Error Fetch] Gagal menghubungi n8n: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: `Gagal memproses automasi n8n: ${error.message}`
+    });
   }
 });
 
@@ -749,20 +591,11 @@ app.post('/api/automation/publish', async (req, res) => {
     log(`Menghapus pending review untuk ${cleanPhone} karena dipublish via Web.`);
   }
 
-  const isSimulationMode = !targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '';
-
-  if (isSimulationMode) {
-    log(`[Simulator] Simulasi penerbitan artikel draf.`);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
-    const draftUrl = cmsType === 'sanity' 
-      ? getSanityDraftUrl(projectId || article?.projectId, draftId, studioUrl || article?.studioUrl)
-      : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
-
-    return res.json({
-      success: true,
-      draftEditUrl: draftUrl,
-      message: 'Draft published simulated successfully.'
+  if (!targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '') {
+    log(`[Error] Target URL publish n8n tidak terkonfigurasi.`);
+    return res.status(400).json({
+      success: false,
+      message: 'Automasi n8n untuk publish tidak terkonfigurasi. Harap atur N8N_URL_PUBLISH di Dashboard Vercel / file .env.'
     });
   }
 
@@ -794,16 +627,10 @@ app.post('/api/automation/publish', async (req, res) => {
     log(`[Sukses] Artikel berhasil dipublikasikan via n8n.`);
     res.json(data);
   } catch (error) {
-    log(`[Error Fetch] Gagal menghubungi n8n publish: ${error.message}. Menggunakan fallback simulator.`);
-    const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
-    const draftUrl = cmsType === 'sanity' 
-      ? getSanityDraftUrl(projectId || article?.projectId, draftId, studioUrl || article?.studioUrl)
-      : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
-
-    res.json({
-      success: true,
-      draftEditUrl: draftUrl,
-      message: 'Draft published (n8n offline fallback) successfully.'
+    log(`[Error Fetch] Gagal menghubungi n8n publish: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: `Gagal mempublikasikan draf artikel via n8n: ${error.message}`
     });
   }
 });
@@ -904,33 +731,10 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
     }
 
     let targetUrl = process.env.N8N_URL_PUBLISH || pendingReview.n8nUrl?.replace('supermat-trigger', 'supermat-publish');
-    const isSimulationMode = !targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '';
-
-    if (isSimulationMode) {
-      log(`[Simulator] Memproses persetujuan simulasi untuk ${pendingReview.keyword}`);
-      
-      setTimeout(async () => {
-        const draftId = `drafts.post-${Math.random().toString(36).slice(2, 9)}`;
-        const draftUrl = pendingReview.cmsType === 'sanity'
-          ? getSanityDraftUrl(pendingReview.article?.projectId, draftId, pendingReview.article?.studioUrl)
-          : `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
-
-        if (useSupabase) {
-          await supabase.from('pending_reviews').update({ status: 'published', draft_url: draftUrl }).eq('phone', cleanSender);
-        } else {
-          const dbUpdate = readDB();
-          if (dbUpdate.pending_reviews?.[cleanSender]) {
-            dbUpdate.pending_reviews[cleanSender].status = 'published';
-            dbUpdate.pending_reviews[cleanSender].draftUrl = draftUrl;
-            writeDB(dbUpdate);
-          }
-        }
-
-        await sendWhatsAppMessage(cleanSender, `✓ Draf artikel "${pendingReview.article.title}" berhasil dipublikasikan ke ${pendingReview.cmsType.toUpperCase()}!
-Tautan editor: ${draftUrl}`);
-      }, 1000);
-
-      return res.json({ status: true, message: 'Publishing initiated (simulated).' });
+    if (!targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '') {
+      log(`[Error] Target URL publish n8n tidak terkonfigurasi.`);
+      await sendWhatsAppMessage(cleanSender, `⚠️ Gagal mempublikasikan: URL publish n8n tidak terkonfigurasi.`);
+      return res.json({ status: false, error: 'Publish URL not configured' });
     }
 
     // Real publish to n8n (async)
@@ -964,22 +768,8 @@ Tautan editor: ${draftUrl}`);
 Tautan editor: ${draftUrl}`);
     })
     .catch(async (err) => {
-      log(`[Error webhook publish] ${err.message}. Memicu fallback.`);
-      const draftUrl = `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
-      
-      if (useSupabase) {
-        await supabase.from('pending_reviews').update({ status: 'published', draft_url: draftUrl }).eq('phone', cleanSender);
-      } else {
-        const dbUpdate = readDB();
-        if (dbUpdate.pending_reviews?.[cleanSender]) {
-          dbUpdate.pending_reviews[cleanSender].status = 'published';
-          dbUpdate.pending_reviews[cleanSender].draftUrl = draftUrl;
-          writeDB(dbUpdate);
-        }
-      }
-
-      await sendWhatsAppMessage(cleanSender, `✓ Draf artikel "${pendingReview.article.title}" berhasil dipublikasikan (fallback)!
-Tautan editor: ${draftUrl}`);
+      log(`[Error webhook publish] ${err.message}`);
+      await sendWhatsAppMessage(cleanSender, `⚠️ Gagal mempublikasikan draf artikel ke CMS via n8n: ${err.message}`);
     });
 
     res.json({ status: true, message: 'Publishing initiated.' });
@@ -1000,40 +790,10 @@ Tautan editor: ${draftUrl}`);
     await sendWhatsAppMessage(cleanSender, `↻ Permintaan revisi diterima. Menulis ulang artikel untuk kata kunci "${pendingReview.keyword}"...`);
 
     let targetUrl = process.env.N8N_URL_RUN || pendingReview.n8nUrl;
-    const isSimulationMode = !targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '';
-
-    if (isSimulationMode) {
-      setTimeout(async () => {
-        const article = getSimulatedArticle(pendingReview.keyword, pendingReview.geo, pendingReview.ln, pendingReview.cmsType);
-        
-        if (useSupabase) {
-          await supabase
-            .from('pending_reviews')
-            .update({ article, status: 'pending', created_at: new Date().toISOString() })
-            .eq('phone', cleanSender);
-        } else {
-          const dbUpdate = readDB();
-          if (dbUpdate.pending_reviews?.[cleanSender]) {
-            dbUpdate.pending_reviews[cleanSender] = {
-              ...dbUpdate.pending_reviews[cleanSender],
-              article,
-              status: 'pending',
-              createdAt: new Date().toISOString()
-            };
-            writeDB(dbUpdate);
-          }
-        }
-
-        await sendWhatsAppMessage(cleanSender, `[Supermat Approval - Revisi Selesai]
-Draf artikel baru hasil revisi telah siap!
-
-Kata Kunci: "${pendingReview.keyword}"
-Judul: "${article.title}"
-
-Ketik *SETUJU* untuk mempublikasikan, atau *REVISI* untuk menulis ulang.`);
-      }, 3000);
-
-      return res.json({ status: true, message: 'Revision initiated (simulated).' });
+    if (!targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '') {
+      log(`[Error] Target URL trigger n8n tidak terkonfigurasi.`);
+      await sendWhatsAppMessage(cleanSender, `⚠️ Gagal memproses revisi: URL trigger n8n tidak terkonfigurasi.`);
+      return res.json({ status: false, error: 'Trigger URL not configured' });
     }
 
     // Real trigger
@@ -1086,36 +846,8 @@ Ketik *SETUJU* untuk mempublikasikan, atau *REVISI* untuk menulis ulang.`);
       }
     })
     .catch(async (err) => {
-      log(`[Error webhook revision trigger] ${err.message}. Memicu fallback.`);
-      setTimeout(async () => {
-        const article = getSimulatedArticle(pendingReview.keyword, pendingReview.geo, pendingReview.ln, pendingReview.cmsType);
-        
-        if (useSupabase) {
-          await supabase
-            .from('pending_reviews')
-            .update({ article, status: 'pending', created_at: new Date().toISOString() })
-            .eq('phone', cleanSender);
-        } else {
-          const dbUpdate = readDB();
-          if (dbUpdate.pending_reviews?.[cleanSender]) {
-            dbUpdate.pending_reviews[cleanSender] = {
-              ...dbUpdate.pending_reviews[cleanSender],
-              article,
-              status: 'pending',
-              createdAt: new Date().toISOString()
-            };
-            writeDB(dbUpdate);
-          }
-        }
-
-        await sendWhatsAppMessage(cleanSender, `[Supermat Approval - Revisi Selesai]
-Draf artikel baru hasil revisi (simulasi fallback) telah siap!
-
-Kata Kunci: "${pendingReview.keyword}"
-Judul: "${article.title}"
-
-Ketik *SETUJU* untuk mempublikasikan, atau *REVISI* untuk menulis ulang.`);
-      }, 3000);
+      log(`[Error webhook revision trigger] ${err.message}`);
+      await sendWhatsAppMessage(cleanSender, `⚠️ Gagal menulis ulang artikel via n8n: ${err.message}`);
     });
 
     res.json({ status: true, message: 'Revision initiated.' });
