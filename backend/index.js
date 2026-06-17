@@ -868,6 +868,136 @@ Ketik *SETUJU* untuk mempublikasikan, atau *REVISI* untuk menulis ulang.`);
   }
 });
 
+/**
+ * Endpoints: Scheduled Keywords Management (Replaces Google Sheets)
+ */
+
+// Helper to read scheduled keywords from database
+const getScheduledKeywordsFromDb = async (phone) => {
+  if (supabase) {
+    try {
+      let query = supabase.from('scheduled_keywords').select('*');
+      if (phone) {
+        query = query.eq('phone', phone);
+      }
+      const { data, error } = await query;
+      if (error) {
+        if (error.code === 'PGRST116' || error.message.includes('relation "scheduled_keywords" does not exist')) {
+          log(`[Supabase Info] Tabel "scheduled_keywords" belum dibuat. Silakan buat di SQL Editor Supabase Anda:\n\n` +
+              `CREATE TABLE scheduled_keywords (\n` +
+              `  id bigint primary key generated always as identity,\n` +
+              `  keyword text not null,\n` +
+              `  geo text default 'ID',\n` +
+              `  ln text default 'id',\n` +
+              `  cms text default 'sanity',\n` +
+              `  schedule text default 'daily',\n` +
+              `  phone text,\n` +
+              `  created_at timestamp with time zone default timezone('utc'::text, now())\n` +
+              `);`);
+        } else {
+          throw error;
+        }
+      } else if (data) {
+        return data;
+      }
+    } catch (err) {
+      log(`[Supabase Error] Gagal membaca scheduled_keywords: ${err.message}`);
+    }
+  }
+
+  const db = readDB();
+  db.scheduled_keywords = db.scheduled_keywords || [];
+  if (phone) {
+    return db.scheduled_keywords.filter(k => k.phone === phone);
+  }
+  return db.scheduled_keywords;
+};
+
+// GET /api/automation/schedule
+app.get('/api/automation/schedule', async (req, res) => {
+  const { phone } = req.query;
+  const list = await getScheduledKeywordsFromDb(phone);
+  res.json(list);
+});
+
+// POST /api/automation/schedule
+app.post('/api/automation/schedule', async (req, res) => {
+  const { keyword, geo, ln, cms, schedule, phone } = req.body;
+  if (!keyword) {
+    return res.status(400).json({ error: 'Keyword required.' });
+  }
+
+  const newItem = {
+    id: Date.now(),
+    keyword: keyword.trim(),
+    geo: geo || 'ID',
+    ln: ln || 'id',
+    cms: cms || 'sanity',
+    schedule: schedule || 'daily',
+    phone: phone || '',
+    created_at: new Date().toISOString()
+  };
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('scheduled_keywords')
+        .insert([{
+          keyword: newItem.keyword,
+          geo: newItem.geo,
+          ln: newItem.ln,
+          cms: newItem.cms,
+          schedule: newItem.schedule,
+          phone: newItem.phone
+        }])
+        .select();
+      
+      if (!error && data && data[0]) {
+        log(`[Supabase] Berhasil menyimpan keyword terjadwal: "${newItem.keyword}"`);
+        return res.json({ success: true, item: data[0] });
+      }
+    } catch (err) {
+      log(`[Supabase Error] Gagal simpan scheduled_keyword: ${err.message}`);
+    }
+  }
+
+  const db = readDB();
+  db.scheduled_keywords = db.scheduled_keywords || [];
+  db.scheduled_keywords.push(newItem);
+  writeDB(db);
+  log(`[Database] Berhasil menyimpan keyword terjadwal secara lokal: "${newItem.keyword}"`);
+  res.json({ success: true, item: newItem });
+});
+
+// DELETE /api/automation/schedule/:id
+app.delete('/api/automation/schedule/:id', async (req, res) => {
+  const { id } = req.params;
+  const numId = Number(id);
+
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from('scheduled_keywords')
+        .delete()
+        .or(`id.eq.${id},id.eq.${numId || 0}`);
+      
+      if (!error) {
+        log(`[Supabase] Berhasil menghapus keyword terjadwal ID: ${id}`);
+        return res.json({ success: true });
+      }
+    } catch (err) {
+      log(`[Supabase Error] Gagal hapus scheduled_keyword: ${err.message}`);
+    }
+  }
+
+  const db = readDB();
+  db.scheduled_keywords = db.scheduled_keywords || [];
+  db.scheduled_keywords = db.scheduled_keywords.filter(k => k.id !== numId && k.id.toString() !== id.toString());
+  writeDB(db);
+  log(`[Database] Berhasil menghapus keyword terjadwal secara lokal ID: ${id}`);
+  res.json({ success: true });
+});
+
 app.listen(PORT, () => {
   log(`Server Express Backend running on http://localhost:${PORT}`);
 });

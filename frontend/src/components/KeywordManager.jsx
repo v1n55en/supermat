@@ -8,6 +8,7 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
   const [newKeyword, setNewKeyword] = useState('');
   const [newGeo, setNewGeo] = useState('ID');
   const [newLn, setNewLn] = useState('id');
+  const [newSchedule, setNewSchedule] = useState('immediate');
   const [runningId, setRunningId] = useState(null);
   const [consoleLogs, setConsoleLogs] = useState([]);
   const consoleEndRef = useRef(null);
@@ -20,21 +21,50 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
   const [editBody, setEditBody] = useState('');
   const [publishingDrawer, setPublishingDrawer] = useState(false);
 
-  // Load from LocalStorage
+  // Load run histories from LocalStorage and scheduled keywords from Backend
   useEffect(() => {
     const stored = localStorage.getItem('supermat_keywords');
+    let localKws = [];
     if (stored) {
-      setKeywords(JSON.parse(stored));
+      localKws = JSON.parse(stored);
     } else {
-      // Boilerplate keywords matching niche F&B
-      const initial = [
-        { id: 1, keyword: 'Ide Promosi Kafe Kekinian', geo: 'ID', ln: 'id', volume: 1500, cms: 'sanity', status: 'Draft Created', date: '2026-06-12', draftUrl: 'https://mwwvwgiw.sanity.studio/desk/post;drafts.post-kafe-1' },
-        { id: 2, keyword: 'Menu Kuliner Viral 2026', geo: 'ID', ln: 'id', volume: 2400, cms: 'sanity', status: 'Idle', date: '2026-06-13' }
+      localKws = [
+        { id: 1, keyword: 'Ide Promosi Kafe Kekinian', geo: 'ID', ln: 'id', volume: 1500, cms: 'sanity', status: 'Draft Created', date: '2026-06-12', draftUrl: 'https://mwwvwgiw.sanity.studio/desk/post;drafts.post-kafe-1', schedule: 'immediate' },
+        { id: 2, keyword: 'Menu Kuliner Viral 2026', geo: 'ID', ln: 'id', volume: 2400, cms: 'sanity', status: 'Idle', date: '2026-06-13', schedule: 'immediate' }
       ];
-      setKeywords(initial);
-      localStorage.setItem('supermat_keywords', JSON.stringify(initial));
+      localStorage.setItem('supermat_keywords', JSON.stringify(localKws));
     }
-  }, []);
+
+    const credsRaw = localStorage.getItem('supermat_credentials');
+    const creds = credsRaw ? JSON.parse(credsRaw) : {};
+    const phone = creds.waPhone || '';
+
+    fetch(`${API_BASE_URL}/api/automation/schedule?phone=${phone}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const scheduledKws = data.map(item => ({
+            id: item.id,
+            keyword: item.keyword,
+            geo: item.geo,
+            ln: item.ln,
+            volume: 0,
+            cms: item.cms,
+            status: item.schedule === 'daily' ? 'Terjadwal (Harian)' : 'Terjadwal (Mingguan)',
+            date: item.created_at ? item.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+            schedule: item.schedule,
+            isScheduledItem: true
+          }));
+          const merged = [...scheduledKws, ...localKws.filter(lk => !data.some(sk => sk.id === lk.id))];
+          setKeywords(merged);
+        } else {
+          setKeywords(localKws);
+        }
+      })
+      .catch(() => {
+        setKeywords(localKws);
+      });
+  }, [user]);
 
   useEffect(() => {
     if (consoleEndRef.current) {
@@ -47,7 +77,12 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
     if (!newKeyword.trim()) return;
 
     const cmsType = user?.cmsType || 'sanity';
-    const volume = Math.floor(Math.random() * 2000) + 300; // Mock volume research
+    const volume = newSchedule === 'immediate' ? (Math.floor(Math.random() * 2000) + 300) : 0;
+    
+    const credsRaw = localStorage.getItem('supermat_credentials');
+    const creds = credsRaw ? JSON.parse(credsRaw) : {};
+    const phone = creds.waPhone || '';
+
     const item = {
       id: Date.now(),
       keyword: newKeyword.trim(),
@@ -55,23 +90,92 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
       ln: newLn,
       volume,
       cms: cmsType,
-      status: 'Idle',
-      date: new Date().toISOString().split('T')[0]
+      status: newSchedule === 'immediate' ? 'Idle' : (newSchedule === 'daily' ? 'Terjadwal (Harian)' : 'Terjadwal (Mingguan)'),
+      date: new Date().toISOString().split('T')[0],
+      schedule: newSchedule
     };
 
-    const updated = [item, ...keywords];
-    setKeywords(updated);
-    localStorage.setItem('supermat_keywords', JSON.stringify(updated));
-    setNewKeyword('');
+    if (newSchedule === 'immediate') {
+      const updated = [item, ...keywords];
+      setKeywords(updated);
+      localStorage.setItem('supermat_keywords', JSON.stringify(updated.filter(k => !k.isScheduledItem)));
+      setNewKeyword('');
+      
+      // Auto run
+      setTimeout(() => {
+        runAutomation(item.id);
+      }, 200);
+    } else {
+      fetch(`${API_BASE_URL}/api/automation/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword: item.keyword,
+          geo: item.geo,
+          ln: item.ln,
+          cms: item.cms,
+          schedule: item.schedule,
+          phone: phone
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.item) {
+          const savedItem = {
+            id: data.item.id,
+            keyword: data.item.keyword,
+            geo: data.item.geo,
+            ln: data.item.ln,
+            volume: 0,
+            cms: data.item.cms,
+            status: data.item.schedule === 'daily' ? 'Terjadwal (Harian)' : 'Terjadwal (Mingguan)',
+            date: data.item.created_at ? data.item.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+            schedule: data.item.schedule,
+            isScheduledItem: true
+          };
+          setKeywords(prev => [savedItem, ...prev]);
+          setNewKeyword('');
+          const time = new Date().toLocaleTimeString();
+          setConsoleLogs(prev => [...prev, `[${time}] [Schedule] Berhasil mendaftarkan niche terjadwal baru: "${savedItem.keyword}"`]);
+        }
+      })
+      .catch(err => {
+        const time = new Date().toLocaleTimeString();
+        setConsoleLogs(prev => [...prev, `[${time}] [❌ Error] Gagal mendaftarkan ke backend scheduler: ${err.message}`]);
+      });
+    }
   };
 
   const deleteKeyword = (id) => {
     if (runningId === id) return;
-    setKeywords(prev => {
-      const updated = prev.filter(k => k.id !== id);
-      localStorage.setItem('supermat_keywords', JSON.stringify(updated));
-      return updated;
-    });
+    const targetKw = keywords.find(k => k.id === id);
+    if (!targetKw) return;
+
+    if (targetKw.isScheduledItem) {
+      fetch(`${API_BASE_URL}/api/automation/schedule/${id}`, {
+        method: 'DELETE'
+      })
+      .then(res => res.json())
+      .then(data => {
+        setKeywords(prev => {
+          const updated = prev.filter(k => k.id !== id);
+          localStorage.setItem('supermat_keywords', JSON.stringify(updated.filter(k => !k.isScheduledItem)));
+          return updated;
+        });
+        const time = new Date().toLocaleTimeString();
+        setConsoleLogs(prev => [...prev, `[${time}] [Schedule] Berhasil menghapus niche terjadwal dari backend.`]);
+      })
+      .catch(err => {
+        const time = new Date().toLocaleTimeString();
+        setConsoleLogs(prev => [...prev, `[${time}] [❌ Error] Gagal menghapus jadwal dari backend: ${err.message}`]);
+      });
+    } else {
+      setKeywords(prev => {
+        const updated = prev.filter(k => k.id !== id);
+        localStorage.setItem('supermat_keywords', JSON.stringify(updated.filter(k => !k.isScheduledItem)));
+        return updated;
+      });
+    }
   };
 
   const runAutomation = (id) => {
@@ -356,7 +460,7 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
         }
         return k;
       });
-      localStorage.setItem('supermat_keywords', JSON.stringify(updated));
+      localStorage.setItem('supermat_keywords', JSON.stringify(updated.filter(k => !k.isScheduledItem)));
       return updated;
     });
   };
@@ -438,6 +542,18 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
             Gagal / Error
           </span>
         );
+      case 'Terjadwal (Harian)':
+        return (
+          <span className="badge" style={{ backgroundColor: 'rgba(59, 130, 246, 0.2)', color: '#3b82f6' }}>
+            Terjadwal (Harian)
+          </span>
+        );
+      case 'Terjadwal (Mingguan)':
+        return (
+          <span className="badge" style={{ backgroundColor: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6' }}>
+            Terjadwal (Mingguan)
+          </span>
+        );
       default: return <span className="badge badge-secondary">{status}</span>;
     }
   };
@@ -489,9 +605,23 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
                   className="form-input" 
                   value={newLn}
                   onChange={(e) => setNewLn(e.target.value)}
-                  placeholder="id" 
+                  placeholder="id"
                   disabled={runningId !== null}
                 />
+              </div>
+              <div className="form-group" style={{ width: '180px', marginBottom: 0 }}>
+                <label className="form-label">Eksekusi / Jadwal</label>
+                <select 
+                  className="form-input" 
+                  value={newSchedule}
+                  onChange={(e) => setNewSchedule(e.target.value)}
+                  disabled={runningId !== null}
+                  style={{ cursor: 'pointer', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', height: '40px', borderRadius: '6px', padding: '0 10px' }}
+                >
+                  <option value="immediate">Eksekusi Langsung</option>
+                  <option value="daily">Jadwal Harian (n8n)</option>
+                  <option value="weekly">Jadwal Mingguan (n8n)</option>
+                </select>
               </div>
               <button 
                 type="submit" 
