@@ -1,0 +1,507 @@
+{
+  "name": "Super Automation: Adapter Sanity Draft",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        528
+      ],
+      "id": "sub-wf-trigger",
+      "name": "Execute Workflow Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- Helpers ---\nconst uid = () =>\n  (Math.random().toString(36).slice(2, 10) + Date.now().toString(36)).slice(0, 12);\n\nconst makeSlug = (s) => ({\n  _type: 'slug',\n  current: String(s || '')\n    .toLowerCase()\n    .replace(/\\s+/g, '-')\n    .replace(/[^a-z0-9\\-]/g, '')\n    .slice(0, 96),\n});\n\nfunction extractJsonString(str) {\n  if (typeof str !== 'string') return null;\n  const mJson = str.match(/```json\\s*([\\s\\S]*?)```/i);\n  if (mJson) return mJson[1].trim();\n  const mCode = str.match(/```+\\s*([\\s\\S]*?)```+/);\n  if (mCode) return mCode[1].trim();\n  const start = str.indexOf('{');\n  const end = str.lastIndexOf('}');\n  if (start !== -1 && end !== -1 && end > start) return str.slice(start, end + 1);\n  return null;\n}\n\nfunction safeParseJson(maybe) {\n  if (!maybe) return null;\n  if (typeof maybe === 'object') return maybe;\n  const s = extractJsonString(String(maybe)) ?? String(maybe);\n  try { return JSON.parse(s); } catch { return null; }\n}\n\nfunction normalizeBody(body = []) {\n  if (typeof body === 'string') {\n        const stripInline = (s) => String(s)\n          .replace(/\\*\\*(.+?)\\*\\*/g, '$1')\n          .replace(/\\*(.+?)\\*/g, '$1')\n          .replace(/__(.+?)__/g, '$1')\n          .replace(/`(.+?)`/g, '$1')\n          .trim();\n        const lines = body.split(/\\r?\\n/);\n        const blocks = [];\n        let para = [];\n        const flushPara = () => {\n                if (!para.length) return;\n                const text = stripInline(para.join(' '));\n                if (text) blocks.push({ _type: 'block', style: 'normal', _key: uid(), markDefs: [], children: [{ _type: 'span', text, marks: [], _key: uid() }] });\n                para = [];\n        };\n        for (const raw of lines) {\n                const line = raw.trim();\n                if (!line) { flushPara(); continue; }\n                const h = line.match(/^(#{1,4})\\s+(.*)$/);\n                if (h) {\n                          flushPara();\n                          const style = 'h' + h[1].length;\n                          blocks.push({ _type: 'block', style, _key: uid(), markDefs: [], children: [{ _type: 'span', text: stripInline(h[2]), marks: [], _key: uid() }] });\n                          continue;\n                }\n                const li = line.match(/^[-*]\\s+(.*)$/);\n                if (li) {\n                          flushPara();\n                          blocks.push({ _type: 'block', style: 'normal', listItem: 'bullet', level: 1, _key: uid(), markDefs: [], children: [{ _type: 'span', text: stripInline(li[1]), marks: [], _key: uid() }] });\n                          continue;\n                }\n                para.push(line);\n        }\n        flushPara();\n        body = blocks;\n  }\n  if (!Array.isArray(body)) body = [];\n  return body.map((block) => {\n    const b = { ...block };\n    b._type = b._type || 'block';\n    b._key = b._key || uid();\n    b.style = b.style || 'normal';\n    b.markDefs = Array.isArray(b.markDefs) ? b.markDefs : [];\n    if (Array.isArray(b.children) && b.children.length) {\n      b.children = b.children.map((ch) => ({\n        _type: 'span',\n        text: ch?.text ?? '',\n        marks: Array.isArray(ch?.marks) ? ch.marks : [],\n        _key: ch?._key || uid(),\n      }));\n    } else {\n      b.children = [{ _type: 'span', text: '', marks: [], _key: uid() }];\n    }\n    return b;\n  });\n}\n\nconst ref = (id) => ({ _type: 'reference', _ref: id, _key: uid() });\nconst toSlug = (x) => String(x || '').toLowerCase().replace(/\\s+/g, '-').replace(/[^a-z0-9\\-]/g, '').slice(0,96);\n\n// --- Mapping deterministik ---\nconst AUTHOR_IDS = { 'ai-team': 'author.ai-team' };\nconst CATEGORY_IDS = {\n  'seo': 'ad9fe04f-2573-418c-b2de-837cd86698a7',\n  'crm': 'bfc9646f-ab6f-4ece-9bd4-43584b512d58',\n  'crm-management': 'bfc9646f-ab6f-4ece-9bd4-43584b512d58',\n  'social-media': 'c435c8c0-6f71-46df-84f2-3acbb1434d20',\n  'sosial-media': 'c435c8c0-6f71-46df-84f2-3acbb1434d20',\n  'marketing': 'cc3fa785-da7e-46da-8c98-1d2befde9090',\n};\n\n// Keyword -> slug untuk auto-klasifikasi\nconst CATEGORY_KEYWORDS = [\n  { slug: 'seo', patterns: [/\\bseo\\b/i, /search engine optimization/i, /optimasi mesin pencari/i] },\n  { slug: 'crm', patterns: [/\\bcrm\\b/i, /customer relationship management/i, /manajemen hubungan pelanggan/i] },\n  { slug: 'social-media', patterns: [/\\bsocial media\\b/i, /\\bsosial media\\b/i, /\\bmedsos\\b/i, /media sosial/i] },\n  { slug: 'marketing', patterns: [/\\bmarketing\\b/i, /\\bpemasaran\\b/i] },\n];\n\n// --- Ambil kandidat payload dari node sebelumnya ---\n// Map inputs from modular parent workflow\nlet inItem = $json.article || $json;\nif (inItem && !inItem.body && inItem.bodyMarkdown) {\n  inItem.body = inItem.bodyMarkdown;\n}\n\n\n// --- Opsi 2: parse JSON string dari output AI Agent (parser dilepas) ---\n(function(){\n  try {\n    var cands=[inItem, inItem && inItem.output, inItem && inItem.response, inItem && inItem.text, inItem && inItem.json];\n    for (var k=0;k<cands.length;k++){\n      var s=cands[k];\n      if (typeof s===\"string\" && s.indexOf(\"{\")>=0){\n        var t=s.replace(/```json/gi,\"\").replace(/```/g,\"\").trim();\n        var a=t.indexOf(\"{\"); var b=t.lastIndexOf(\"}\");\n        if (a>=0 && b>a){\n          var parsed=JSON.parse(t.slice(a,b+1));\n          if (parsed && (parsed.title||parsed.body||parsed.slug)){ inItem=parsed; break; }\n          if (parsed && parsed.output && (parsed.output.title||parsed.output.body)){ inItem=parsed.output; break; }\n        }\n      }\n    }\n  } catch(e){ /* biarkan fallback kandidat di bawah menangani */ }\n})();\n\nlet ai = null;\nif (Array.isArray(inItem) && inItem.length) {\n  for (const entry of inItem) {\n    const parsed = safeParseJson(entry?.output ?? entry);\n    if (parsed && (parsed.title || parsed.body || parsed.slug)) { ai = parsed; break; }\n  }\n} else {\n  const candidates = [inItem, inItem.output, inItem.result, inItem.response?.text, inItem.response, inItem.data, inItem.text, inItem.ai];\n  for (const c of candidates) {\n    const parsed = safeParseJson(c);\n    if (parsed && (parsed.title || parsed.body || parsed.slug)) { ai = parsed; break; }\n  }\n}\nif (!ai && typeof inItem === 'object' && (inItem.title || inItem.body)) ai = inItem;\n\n// --- Build fields ---\nconst rawTitle = (ai && typeof ai.title === 'string') ? ai.title.trim() : '';\nconst body = normalizeBody(ai?.body || []);\nconst bodyHasContent = Array.isArray(body) && body.length > 0;\nif (!rawTitle || /^untitled$/i.test(rawTitle) || !bodyHasContent) {\n  throw new Error('Artikel tidak valid: title kosong/Untitled atau body kosong (kemungkinan AI Agent gagal). Publish dibatalkan.');\n}\nconst title = rawTitle;\n}\nconst slugObj = (ai?.slug && typeof ai.slug === 'object') ? ai.slug : makeSlug(ai?.slug || title);\n\n// excerpt\nfunction plainText(blocks = []) {\n  return blocks\n    .filter(b => b?._type === 'block')\n    .map(b => (Array.isArray(b.children) ? b.children.map(c => c?.text || '').join('') : ''))\n    .join('\\n')\n    .trim();\n}\nconst excerpt = (typeof ai?.excerpt === 'string' && ai.excerpt.trim()) || plainText(body).slice(0, 160);\n\n// author\nconst authorId = ai?.authorId || (ai?.authorSlug && AUTHOR_IDS[ai.authorSlug]) || AUTHOR_IDS['ai-team'];\n\n// categories: AI + auto-klasifikasi keyword\nconst categorySlugsFromAi = Array.isArray(ai?.categories) ? ai.categories.map(toSlug) : [];\nconst fullText = (title + ' ' + plainText(body) + ' ' + (excerpt || '')).toLowerCase();\nconst categorySlugsAuto = CATEGORY_KEYWORDS\n  .filter(({ patterns }) => patterns.some(p => p.test(fullText)))\n  .map(x => x.slug);\nconst allCategorySlugs = Array.from(new Set([...categorySlugsFromAi, ...categorySlugsAuto]));\nconst categoryIds = allCategorySlugs.map(s => CATEGORY_IDS[s]).filter(Boolean);\nconst categoryIdsUnique = Array.from(new Set(categoryIds));\n\n// --- Dokumen post ---\nconst draftDocId = 'drafts.post-' + uid();\nconst doc = {\n  _id: draftDocId,\n  _type: 'post',\n  title,\n  slug: slugObj,\n  body,\n  excerpt,\n  author: authorId ? ref(authorId) : undefined,\n  categories: categoryIdsUnique.map(id => ref(id)),\n  publishedAt: ai?.publishedAt || new Date().toISOString(),\n};\n\n// --- Pastikan author taxonomy ada (idempotent) ---\nconst taxonomyMutations = [];\nif (authorId === 'author.ai-team') {\n  taxonomyMutations.push({\n    createIfNotExists: {\n      _id: 'author.ai-team',\n      _type: 'author',\n      name: 'AI Team',\n      slug: { _type: 'slug', current: 'ai-team' },\n    }\n  });\n}\n\nconst _debug = {\n  pickedFrom: ai ? 'parsed' : 'fallback',\n  hasTitle: Boolean(ai?.title),\n  hasBody: Array.isArray(ai?.body) && ai.body.length > 0,\n  authorId,\n  categorySlugsFromAi,\n  categorySlugsAuto,\n  allCategorySlugs,\n  categoryIds: categoryIdsUnique,\n};\n\nreturn [{\n  json: {\n    clientName: $json.clientName || \"Supermat Client\",\n    telegramChatId: $json.telegramChatId || \"\",\n    cmsType: \"sanity\",\n    draftDocId,\n    draftEditUrl: `https://${PROJECT_ID}.sanity.studio/desk/post;${draftDocId}`,\n    mutations: [\n      ...taxonomyMutations,\n      { createOrReplace: doc },\n    ],\n    _debug,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        528
+      ],
+      "id": "ab66c3e8-0267-4673-a892-2b6116d9fdd0",
+      "name": "Schema Sanity"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mwwvwgiw.api.sanity.io/v2023-08-01/data/mutate/production?returnIds=true&returnDocuments=true",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "Content-Type"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer skBXK0a9JwOX4s9YEv0GMfd995SQhzuCL4zgfWW17YfkvXgjd2xdSoYXQZUsvnyghPgqnzgSciyxYYWqj9TCFYjAfJ9c1XSkcoD2mU4JoPe2ITXuyWQf0qYPdspSCZfAYoH9iJedBa2fRJPg2dWTYT6t1LNZMzPVi7uivlUZ1Kodu7Me1SRk"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "mutations",
+              "value": "={{ $json.mutations }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1296,
+        528
+      ],
+      "id": "64cde1d0-3a47-449e-85ba-b5c3df904a60",
+      "name": "Publishing Sanity"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mwwvwgiw.api.sanity.io/v2023-08-01/assets/images/production?filename={{$json.slug}}-{{ (['hero','inline-a','inline-b'][$json.idx] || $json.idx) }}.png",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer skBXK0a9JwOX4s9YEv0GMfd995SQhzuCL4zgfWW17YfkvXgjd2xdSoYXQZUsvnyghPgqnzgSciyxYYWqj9TCFYjAfJ9c1XSkcoD2mU4JoPe2ITXuyWQf0qYPdspSCZfAYoH9iJedBa2fRJPg2dWTYT6t1LNZMzPVi7uivlUZ1Kodu7Me1SRk"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/octet-stream"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1104,
+        1056
+      ],
+      "id": "e1f49eb0-65f5-4d92-917e-8139e3b3a212",
+      "name": "Upload Sanity"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Bisa dapet dari doc atau dari top-level\nconst docId = $json.docId;\nconst doc   = $json.doc ?? $json;\n\nconst title = doc?.title || 'Untitled';\nconst slug  = doc?.slug?.current || doc?.slug || 'untitled';\nconst textBlocks = (doc?.body || []).filter(b => b?._type === 'block');\nconst firstPara = (textBlocks.find(b => b.style === 'normal')?.children?.[0]?.text || '').slice(0, 220);\nconst keywords = (doc?.keywords || [])\n  .filter(k => typeof k === 'string')\n  .slice(0, 6);\n\nconst primary = doc?.primaryKeyword || keywords[0] || title;\n\nconst baseStyle = 'clean, modern, high detail, blog hero image, negative space for overlay, no text, no watermark';\n\nconst prompts = [\n  `High-quality blog hero image about \"${primary}\". ${baseStyle}. Visual focus: concept overview, center composition.`,\n  `Supporting illustration for article \"${title}\". Focus on a concrete sub-aspect: key mechanism or example. ${baseStyle}. Different angle from hero.`,\n  `Second supporting visual for \"${title}\". Complementary perspective (macro or contextual scene). ${baseStyle}.`\n];\n\nreturn prompts.map((prompt, idx) => ({ json: { docId, title, slug, keywords, prompt, idx, totalImages: prompts.length } }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        1056
+      ],
+      "id": "cd49851b-2fef-404f-bc64-45605d9f53ea",
+      "name": "Convert Prompt"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": "={{ $json.prompts[$itemIndex] }}"
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        288,
+        1056
+      ],
+      "id": "edc146a5-ed76-4244-ad23-f0b9b0a7c45d",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        1152
+      ],
+      "id": "9cf598a8-434b-4440-942e-91a6c9d13299",
+      "name": "Wait1",
+      "webhookId": "05e59a52-9ee3-42a3-94c4-f05254e0fb91"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ab74eec9-b859-4c61-b7d1-7c26dd4443f7",
+              "name": "docId",
+              "value": "={{  $('Loop Over Items').item.json.docId }}",
+              "type": "string"
+            },
+            {
+              "id": "cab3d269-a85e-46f6-833e-c57e40f90593",
+              "name": "idx",
+              "value": "={{  $('Loop Over Items').item.json.idx }}",
+              "type": "string"
+            },
+            {
+              "id": "8cbd1304-e348-479e-aa9e-b4b344ed0811",
+              "name": "slug",
+              "value": "={{ $('Loop Over Items').item.json.slug }}",
+              "type": "string"
+            },
+            {
+              "id": "074f8399-b674-4d88-995f-6260209696d1",
+              "name": "assetId",
+              "value": "={{  $json.document._id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1312,
+        1056
+      ],
+      "id": "00930e53-878f-475e-84b8-0047b854ce5f",
+      "name": "Set ID & Slug"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mwwvwgiw.api.sanity.io/v2023-08-01/data/mutate/production?returnIds=true&returnDocuments=true",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "Content-Type"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer skBXK0a9JwOX4s9YEv0GMfd995SQhzuCL4zgfWW17YfkvXgjd2xdSoYXQZUsvnyghPgqnzgSciyxYYWqj9TCFYjAfJ9c1XSkcoD2mU4JoPe2ITXuyWQf0qYPdspSCZfAYoH9iJedBa2fRJPg2dWTYT6t1LNZMzPVi7uivlUZ1Kodu7Me1SRk"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{  JSON.stringify($json.mutationBody) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1728,
+        1056
+      ],
+      "id": "1bca6a7e-5c65-4630-b627-3c3acc6570b3",
+      "name": "Mutasi Sanity"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.cloudflare.com/client/v4/accounts/2d511277f182a32759b3399a30f0c0b6/ai/run/@cf/black-forest-labs/flux-1-schnell",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"prompt\": {{ JSON.stringify($json.prompt) }}, \"steps\": 4 }",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 8000
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        624,
+        1056
+      ],
+      "id": "36e5b919-9fe5-4dc0-8505-f3c7482d4f56",
+      "name": "Pollinations AI",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "858ct9YnlJoGTbGn",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n    const bin = item.binary.data;\n    const jsonStr = Buffer.from(bin.data, 'base64').toString('utf-8');\n    const parsed = JSON.parse(jsonStr);\n    const imgB64 = parsed.result.image;\n    const buf = Buffer.from(imgB64, 'base64');\n    out.push({\n          json: item.json,\n          binary: {\n                  data: {\n                            data: buf.toString('base64'),\n                            mimeType: 'image/png',\n                            fileExtension: 'png',\n                            fileName: 'image.png'\n                  }\n          }\n    });\n}\nreturn out;\n      "
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        1056
+      ],
+      "id": "83b95011-ec69-4478-bba0-6e590e45a80f",
+      "name": "Convert Binary"
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $json;\nconst created = (res.results || []).find(r => r.operation === 'create');\nconst updated = (res.results || []).find(r => r.operation === 'update');\n\nconst picked = created || updated; // prioritas create\nreturn [{\n  json: {\n    docId: picked?.id,\n    doc: picked?.document || null\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        528
+      ],
+      "id": "8db400dd-7011-458c-ad95-d148cd11dcb6",
+      "name": "Picked Created Date"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(it => {\n  const idx = Number(it.json.idx);\n  const docId = it.json.docId;\n  const assetId = it.json.assetId;\n  const k = () => Math.random().toString(36).slice(2,10);\n  const imgRef = { _type: 'image', asset: { _type: 'reference', _ref: assetId } };\n  const imgBlock = { _type: 'image', _key: k(), asset: { _type: 'reference', _ref: assetId } };\n  const para = (t) => ({ _type: 'block', _key: k(), style: 'normal', markDefs: [], children: [{ _type: 'span', _key: k(), text: t || '', marks: [] }] });\n  let patches;\n  if (idx === 0) {\n    patches = [{ set: { mainImage: imgRef } }];\n  } else if (idx === 1) {\n    patches = [{ insert: { after: 'body[0]', items: [imgBlock, para('')] } }];\n  } else {\n    patches = [{ insert: { after: 'body[-1]', items: [para(''), para(''), imgBlock] } }];\n  }\n  const mutationBody = { mutations: patches.map(p => ({ patch: Object.assign({ id: docId }, p) })) };\n  return { json: { docId, idx, assetId, patches, mutationBody } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        1056
+      ],
+      "id": "c9c6e84b-9db8-431d-8aa2-dd0688512b1b",
+      "name": "3 Images JS"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Add Internal Links (AI-powered, semantic relevance) ===\n// CONFIG: paste your credentials below (DO NOT share publicly)\nconst SANITY_TOKEN = 'skBXK0a9JwOX4s9YEv0GMfd995SQhzuCL4zgfWW17YfkvXgjd2xdSoYXQZUsvnyghPgqnzgSciyxYYWqj9TCFYjAfJ9c1XSkcoD2mU4JoPe2ITXuyWQf0qYPdspSCZfAYoH9iJedBa2fRJPg2dWTYT6t1LNZMzPVi7uivlUZ1Kodu7Me1SRk'; // same token as in Publishing Sanity\nconst GEMINI_API_KEY = 'AIzaSyBbMHPlk1KrdLywqCxr2r5h1GtytRpjzBY';\nconst GEMINI_MODEL = 'gemini-2.5-flash';\nconst PROJECT_ID = 'mwwvwgiw';\nconst DATASET = 'production';\nconst API_VERSION = 'v2023-08-01';\nconst LINK_PREFIX = '/article/'; // change to \"/blog/\" if posts live under /blog/\nconst MAX_LINKS = 4 // max internal links to insert per article\nconst MAX_CANDIDATES = 30; // how many old posts to send to the AI\n\nconst uid = () => (Math.random().toString(36).slice(2, 10) + Date.now().toString(36)).slice(0, 12);\nconst norm = (s) => String(s || '').toLowerCase().trim();\n\n// --- Sanity request helper (uses n8n built-in httpRequest) ---\nasync function sanity(method, path, body) {\n    const opt = {\n          method,\n          url: `https://${PROJECT_ID}.api.sanity.io/${API_VERSION}/${path}`,\n          headers: { Authorization: `Bearer ${SANITY_TOKEN}` },\n          json: true,\n    };\n    if (body) { opt.body = body; opt.headers['Content-Type'] = 'application/json'; }\n    return await this.helpers.httpRequest(opt);\n}\n\n// --- Gemini request helper ---\nasync function askGemini(prompt) {\n    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;\n    const res = await this.helpers.httpRequest({\n          method: 'POST',\n          url,\n          headers: { 'Content-Type': 'application/json' },\n          json: true,\n          body: {\n                  contents: [{ parts: [{ text: prompt }] }],\n                  generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },\n          },\n    });\n    const text = res?.candidates?.[0]?.content?.parts?.[0]?.text || '';\n    return text;\n}\n\n// --- 1. Get the freshly-created article ---\nconst input = $input.first().json;\nconst docId = input.docId;\nconst doc = input.doc || {};\nlet body = Array.isArray(doc.body) ? JSON.parse(JSON.stringify(doc.body)) : [];\nconst thisTitle = doc.title || '';\nif (!docId || body.length === 0) {\n    return [{ json: { skipped: true, reason: 'No docId or empty body', docId } }];\n}\n\n// --- 2. Fetch all OTHER posts (title + slug + excerpt) as link candidates ---\nconst groq = `*[_type == \"post\" && _id != $id && defined(slug.current)]{ \"title\": title, \"slug\": slug.current, \"excerpt\": coalesce(excerpt, \"\") }[0...${MAX_CANDIDATES}]`;\nconst qPath = `data/query/${DATASET}?query=${encodeURIComponent(groq)}&$id=${encodeURIComponent(JSON.stringify(docId))}`;\nconst res = await sanity('GET', qPath);\nconst candidates = (res.result || []).filter(p => p.title && p.slug);\nif (candidates.length === 0) {\n    return [{ json: { docId, linksAdded: 0, message: 'No candidate posts found' } }];\n}\n\n// --- 3. Build plain text of the article body (with block index) ---\nconst blockText = [];\nbody.forEach((block, bi) => {\n    if (block && block._type === 'block' && Array.isArray(block.children)) {\n          const t = block.children.filter(c => c._type === 'span').map(c => c.text || '').join('');\n          if (t.trim()) blockText.push({ bi, text: t });\n    }\n});\n\n// --- 4. Ask Gemini to pick semantically related posts + anchor phrases ---\nconst candList = candidates.map((c, i) => `${i}. title: \"${c.title}\" | slug: ${c.slug}${c.excerpt ? ' | excerpt: ' + c.excerpt.slice(0, 160) : ''}`).join('\\n');\nconst articleText = blockText.map(b => `[block ${b.bi}] ${b.text}`).join('\\n');\nconst prompt = `You are an SEO internal-linking assistant. Given a NEW article and a list of OTHER existing articles, choose up to ${MAX_LINKS} internal links to insert into the new article.\\n\\nRULES:\\n- Pick links based on TOPIC/SEMANTIC relevance, NOT on title matching.\\n- The \"anchor\" MUST be an exact substring (verbatim, case included) that already appears in the new article body text below. Prefer a natural noun phrase of 2-6 words.\\n- Each target slug used at most once. Do not link a phrase to an unrelated article.\\n- If nothing is relevant, return an empty array.\\n- Return ONLY valid JSON: an array of objects {\"anchor\": string, \"slug\": string, \"reason\": string}.\\n\\nNEW ARTICLE TITLE: \"${thisTitle}\"\\n\\nNEW ARTICLE BODY:\\n${articleText}\\n\\nEXISTING ARTICLES (candidates):\\n${candList}`;\n\nlet picks = [];\ntry {\n    const raw = await askGemini(prompt);\n    const cleaned = raw.replace(/^```json\\s*/i, '').replace(/^```\\s*/i, '').replace(/```\\s*$/i, '').trim();\n    picks = JSON.parse(cleaned);\n    if (!Array.isArray(picks)) picks = [];\n} catch (e) {\n    return [{ json: { docId, linksAdded: 0, message: 'Gemini parse error: ' + e.message } }];\n}\n\n// --- 5. Inject links into the body based on AI picks ---\nconst validSlugs = new Set(candidates.map(c => c.slug));\nconst usedSlugs = new Set();\nlet linksAdded = 0;\n\nfor (const pick of picks) {\n    if (linksAdded >= MAX_LINKS) break;\n    const anchor = (pick && pick.anchor || '').trim();\n    const slug = (pick && pick.slug || '').trim();\n    if (!anchor || !slug || !validSlugs.has(slug) || usedSlugs.has(slug)) continue;\n  \n    let injected = false;\n    for (const block of body) {\n          if (injected) break;\n          if (!block || block._type !== 'block' || !Array.isArray(block.children)) continue;\n          if (!Array.isArray(block.markDefs)) block.markDefs = [];\n      \n          for (let ci = 0; ci < block.children.length; ci++) {\n                  const span = block.children[ci];\n                  if (!span || span._type !== 'span' || typeof span.text !== 'string') continue;\n                  if (Array.isArray(span.marks) && span.marks.length) continue; // skip already-marked spans\n                  const idx = span.text.indexOf(anchor);\n                  if (idx === -1) continue;\n            \n                  const before = span.text.slice(0, idx);\n                  const middle = span.text.slice(idx, idx + anchor.length);\n                  const after = span.text.slice(idx + anchor.length);\n            \n                  const markKey = uid();\n                  block.markDefs.push({ _key: markKey, _type: 'link', href: LINK_PREFIX + slug });\n            \n                  const newSpans = [];\n                  if (before) newSpans.push({ _type: 'span', _key: uid(), text: before, marks: [] });\n                  newSpans.push({ _type: 'span', _key: uid(), text: middle, marks: [markKey] });\n                  if (after) newSpans.push({ _type: 'span', _key: uid(), text: after, marks: [] });\n            \n                  block.children.splice(ci, 1, ...newSpans);\n                  usedSlugs.add(slug);\n                  linksAdded++;\n                  injected = true;\n                  break;\n          }\n    }\n}\n\n// --- 6. Patch the document with the updated body ---\nif (linksAdded === 0) {\n    return [{ json: { docId, linksAdded: 0, message: 'AI found no insertable anchors in body', picks } }];\n}\n\nconst mutations = { mutations: [{ patch: { id: docId, set: { body } } }] };\nconst patchRes = await sanity('POST', `data/mutate/${DATASET}?returnIds=true`, mutations);\n\nreturn [{ json: { docId, linksAdded, linkedSlugs: Array.from(usedSlugs), picks, sanityResult: patchRes } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        528
+      ],
+      "id": "b5054245-14a9-4d42-81c6-d408f9054730",
+      "name": "Add Internal Links"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Add External Links (AI-powered, high-DA authoritative sources only) ===\n// CONFIG: paste your credentials below (same values as the Add Internal Links node)\nconst SANITY_TOKEN = 'skBXK0a9JwOX4s9YEv0GMfd995SQhzuCL4zgfWW17YfkvXgjd2xdSoYXQZUsvnyghPgqnzgSciyxYYWqj9TCFYjAfJ9c1XSkcoD2mU4JoPe2ITXuyWQf0qYPdspSCZfAYoH9iJedBa2fRJPg2dWTYT6t1LNZMzPVi7uivlUZ1Kodu7Me1SRk';\nconst GEMINI_API_KEY = 'AIzaSyBbMHPlk1KrdLywqCxr2r5h1GtytRpjzBY';\nconst GEMINI_MODEL = 'gemini-2.5-flash';\nconst PROJECT_ID = 'mwwvwgiw';\nconst DATASET = 'production';\nconst API_VERSION = 'v2023-08-01';\nconst MAX_EXT_LINKS = 2; // max external links to insert per article\n\n// Whitelist of allowed high-DA domains. Gemini may ONLY link to these.\nconst ALLOWED_DOMAINS = ['wikipedia.org','britannica.com','nytimes.com','bbc.com','reuters.com','nature.com','sciencedirect.com','ncbi.nlm.nih.gov','who.int','forbes.com','statista.com','.gov','.edu'];\n\nconst uid = () => (Math.random().toString(36).slice(2, 10) + Date.now().toString(36)).slice(0, 12);\nconst norm = (s) => String(s || '').toLowerCase().trim();\n\n// --- Sanity request helper ---\nasync function sanity(method, path, body) {\n  const opt = { method, url: `https://${PROJECT_ID}.api.sanity.io/${API_VERSION}/${path}`, headers: { Authorization: `Bearer ${SANITY_TOKEN}` }, json: true };\n  if (body) { opt.body = body; opt.headers['Content-Type'] = 'application/json'; }\n  return await this.helpers.httpRequest(opt);\n}\n\n// --- Gemini request helper ---\nasync function askGemini(prompt) {\n  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;\n  const res = await this.helpers.httpRequest({ method: 'POST', url, headers: { 'Content-Type': 'application/json' }, json: true, body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } } });\n  return (res && res.candidates && res.candidates[0] && res.candidates[0].content && res.candidates[0].content.parts && res.candidates[0].content.parts[0] && res.candidates[0].content.parts[0].text) || '';\n}\n\n// --- Domain whitelist check (only https + allowed high-DA domains) ---\nfunction hostAllowed(u) {\n  try {\n    if (!/^https:\\/\\//i.test(u)) return false;\n    const h = new URL(u).hostname.toLowerCase();\n    return ALLOWED_DOMAINS.some(d => d.charAt(0) === '.' ? h.endsWith(d) : (h === d || h.endsWith('.' + d)));\n  } catch (e) { return false; }\n}\n\n// --- 1. Get docId from previous node, then RE-FETCH the fresh body (internal links already applied) ---\nconst input = $input.first().json;\nconst docId = input.docId;\nif (!docId) { return [{ json: { skipped: true, reason: 'No docId from previous node' } }]; }\n\nconst groq = '*[_id == $id][0]{title, body}';\nconst qPath = `data/query/${DATASET}?query=${encodeURIComponent(groq)}&$id=${encodeURIComponent(JSON.stringify(docId))}`;\nconst fetched = await sanity('GET', qPath);\nconst doc = (fetched && fetched.result) || {};\nlet body = Array.isArray(doc.body) ? JSON.parse(JSON.stringify(doc.body)) : [];\nconst thisTitle = doc.title || '';\nif (!body.length) { return [{ json: { skipped: true, reason: 'Empty body', docId } }]; }\n\n// --- 2. Build plain text of the article body (with block index) ---\nconst blockText = [];\nbody.forEach((block, bi) => {\n  if (block && block._type === 'block' && Array.isArray(block.children)) {\n    const t = block.children.filter(c => c._type === 'span').map(c => c.text || '').join('');\n    if (t.trim()) blockText.push({ bi, text: t });\n  }\n});\nconst articleText = blockText.map(b => `[block ${b.bi}] ${b.text}`).join('\\n');\n\n// --- 3. Ask Gemini for external links to authoritative high-DA sources ---\nconst allowedList = ALLOWED_DOMAINS.join(', ');\nconst prompt = [\n  'You are an SEO assistant adding EXTERNAL outbound links to authoritative, high Domain Authority sources.',\n  'RULES:',\n  '- \"anchor\" MUST be an exact substring (verbatim, case included) that already appears in the article body text below. Prefer a natural noun phrase of 2-6 words.',\n  '- \"url\" MUST be a full https:// URL whose domain is one of these ALLOWED high-DA domains ONLY: ' + allowedList,\n  '- Choose URLs that genuinely exist and are topically relevant (e.g. the matching Wikipedia article, an official organization page, or a reputable publication). Do NOT invent fake or guessed URLs.',\n  '- Insert at most ' + MAX_EXT_LINKS + ' links. Each anchor used at most once. Do not link the same domain twice.',\n  '- If nothing relevant and authoritative is available, return an empty array.',\n  '- Return ONLY valid JSON: an array of objects {\"anchor\": string, \"url\": string, \"reason\": string}.',\n  '',\n  'ARTICLE TITLE: \"' + thisTitle + '\"',\n  '',\n  'ARTICLE BODY:',\n  articleText\n].join('\\n');\n\nlet picks = [];\ntry {\n  const raw = await askGemini(prompt);\n  const cleaned = raw.replace(/^```json\\s*/i, '').replace(/^```\\s*/i, '').replace(/```\\s*$/i, '').trim();\n  picks = JSON.parse(cleaned);\n  if (!Array.isArray(picks)) picks = [];\n} catch (e) { picks = []; }\n\n// --- 4. Insert external links into body as Portable Text marks ---\nlet linksAdded = 0;\nconst usedAnchors = new Set();\nconst usedHosts = new Set();\n\nfor (const pick of picks) {\n  if (linksAdded >= MAX_EXT_LINKS) break;\n  const anchor = (pick && pick.anchor || '').trim();\n  const url = (pick && pick.url || '').trim();\n  if (!anchor || !url || !hostAllowed(url)) continue;\n  let host;\n  try { host = new URL(url).hostname.toLowerCase().replace(/^www\\./, ''); } catch (e) { continue; }\n  if (usedAnchors.has(norm(anchor)) || usedHosts.has(host)) continue;\n\n  let injected = false;\n  for (const block of body) {\n    if (injected) break;\n    if (!block || block._type !== 'block' || !Array.isArray(block.children)) continue;\n    if (!Array.isArray(block.markDefs)) block.markDefs = [];\n    for (let ci = 0; ci < block.children.length; ci++) {\n      const child = block.children[ci];\n      if (!child || child._type !== 'span' || typeof child.text !== 'string') continue;\n      const idx = child.text.indexOf(anchor);\n      if (idx === -1) continue;\n      const before = child.text.slice(0, idx);\n      const middle = child.text.slice(idx, idx + anchor.length);\n      const after = child.text.slice(idx + anchor.length);\n      const markKey = uid();\n      // External link mark: full URL href, opens in new tab (blank), dofollow + noopener\n      block.markDefs.push({ _key: markKey, _type: 'link', href: url, blank: true, rel: 'noopener' });\n      const baseMarks = Array.isArray(child.marks) ? child.marks.filter(m => m !== markKey) : [];\n      const newSpans = [];\n      if (before) newSpans.push({ _type: 'span', _key: uid(), text: before, marks: baseMarks });\n      newSpans.push({ _type: 'span', _key: uid(), text: middle, marks: baseMarks.concat([markKey]) });\n      if (after) newSpans.push({ _type: 'span', _key: uid(), text: after, marks: baseMarks });\n      block.children.splice(ci, 1, ...newSpans);\n      usedAnchors.add(norm(anchor));\n      usedHosts.add(host);\n      linksAdded++;\n      injected = true;\n      break;\n    }\n  }\n}\n\n// --- 5. Patch the document with the updated body ---\nif (linksAdded === 0) {\n  return [{ json: { docId, externalLinksAdded: 0, message: 'AI found no insertable authoritative anchors', picks } }];\n}\nconst mutations = { mutations: [{ patch: { id: docId, set: { body } } }] };\nconst patchRes = await sanity('POST', `data/mutate/${DATASET}?returnIds=true`, mutations);\nreturn [{ json: { docId, externalLinksAdded: linksAdded, links: picks.slice(0, linksAdded), sanityResult: patchRes } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        736
+      ],
+      "id": "ddb0e64c-f75e-4fa4-9af1-02bed590d4c7",
+      "name": "Add External Links"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    clientName: $('Sub-workflow Trigger').item.json.clientName || \"Supermat Client\",\n    telegramChatId: $('Sub-workflow Trigger').item.json.telegramChatId || \"\",\n    draftEditUrl: $('Schema Sanity').item.json.draftEditUrl,\n    keyword: $('Sub-workflow Trigger').item.json.article.primaryKeyword || \"Keyword\",\n    title: $('Sub-workflow Trigger').item.json.article.title || \"Artikel Baru\",\n    status: \"success\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        736
+      ],
+      "id": "finalize-sanity-adapter",
+      "name": "Finalize Adapter Data"
+    }
+  ],
+  "connections": {
+    "Schema Sanity": {
+      "main": [
+        [
+          {
+            "node": "Publishing Sanity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publishing Sanity": {
+      "main": [
+        [
+          {
+            "node": "Picked Created Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Sanity": {
+      "main": [
+        [
+          {
+            "node": "Set ID & Slug",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Prompt": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Add Internal Links",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Convert Prompt",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pollinations AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set ID & Slug": {
+      "main": [
+        [
+          {
+            "node": "3 Images JS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pollinations AI": {
+      "main": [
+        [
+          {
+            "node": "Convert Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Binary": {
+      "main": [
+        [
+          {
+            "node": "Upload Sanity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Picked Created Date": {
+      "main": [
+        [
+          {
+            "node": "Convert Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3 Images JS": {
+      "main": [
+        [
+          {
+            "node": "Mutasi Sanity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Internal Links": {
+      "main": [
+        [
+          {
+            "node": "Add External Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add External Links": {
+      "main": [
+        [
+          {
+            "node": "Finalize Adapter Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Schema Sanity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

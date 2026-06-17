@@ -1,0 +1,188 @@
+<h2>Rancangan Tampilan Web Approver & Premium Lock</h2>
+<p class="subtitle">Pilih skema antarmuka untuk me-review artikel draf dan melakukan persetujuan (approval) langsung di web.</p>
+
+<div class="options">
+  <div class="option selected" data-choice="tab" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Pendekatan A: Tab Terpisah "Review & Approval"</h3>
+      <p>Draf artikel yang dikirim oleh n8n akan masuk ke tab baru khusus. Sangat bersih, memberikan ruang editor yang luas untuk membaca, mengedit teks secara detail, serta membandingkan versi draf sebelum dipublish.</p>
+    </div>
+  </div>
+  
+  <div class="option" data-choice="drawer" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Pendekatan B: Drawer/Modal Inline (Slide-out dari Kanan)</h3>
+      <p>Ketika draf selesai dibuat, mengeklik "Review" pada baris keyword akan membuka laci panel dari kanan layar (drawer). User bisa me-review dan mengedit artikel secara instan tanpa meninggalkan halaman daftar keyword.</p>
+    </div>
+  </div>
+</div>
+
+<div class="pros-cons" style="margin-top: 1.5rem;">
+  <div class="pros">
+    <h4>Kelebihan Pendekatan A (Tab Terpisah)</h4>
+    <ul>
+      <li>Ruang penulisan luas (Full Editor Layout) seperti CMS asli.</li>
+      <li>Mendukung antrean review multi-artikel dengan sidebar navigasi draf.</li>
+      <li>Mudah dikembangkan untuk peninjauan mendalam.</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>Kelebihan Pendekatan B (Inline Drawer)</h4>
+    <ul>
+      <li>Lebih cepat dibuka secara ad-hoc (tidak perlu pindah tab).</li>
+      <li>Fokus pada satu kata kunci yang baru saja selesai diproses.</li>
+      <li>Interaksi terasa modern dan responsif.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 style="margin-top: 2rem; margin-bottom: 0.75rem;">Visualisasi Wireframe & Premium Lock Simulator</h3>
+
+<div class="split">
+  <!-- Left Side: Tab Wireframe Mockup -->
+  <div class="mockup">
+    <div class="mockup-header">Wireframe Pendekatan A: Tab Terpisah</div>
+    <div class="mockup-body" style="background: var(--bg-primary); padding: 1rem;">
+      <!-- Sidebar Mock -->
+      <div style="display: flex; gap: 0.5rem; height: 260px;">
+        <div style="width: 30%; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+          <div style="font-size: 0.6rem; font-weight: bold; color: var(--text-secondary);">DAFTAR REVIEW (2)</div>
+          <div style="background: var(--selected-bg); border: 1px solid var(--selected-border); border-radius: 4px; padding: 0.35rem; font-size: 0.65rem; font-weight: bold;">
+            📝 Kafe Kekinian...
+          </div>
+          <div style="background: var(--bg-primary); border-radius: 4px; padding: 0.35rem; font-size: 0.65rem; color: var(--text-secondary);">
+            📝 Kuliner Viral...
+          </div>
+        </div>
+        
+        <!-- Main Content Editor Mock -->
+        <div style="flex: 1; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 0.35rem; margin-bottom: 0.5rem;">
+              <span style="font-size: 0.7rem; font-weight: bold;">Review: Ide Promosi Kafe Kekinian</span>
+              <span style="background: var(--warning); color: white; padding: 1px 4px; border-radius: 4px; font-size: 0.5rem;">Pending Approval</span>
+            </div>
+            <!-- Editor fields -->
+            <div style="margin-bottom: 0.35rem;">
+              <label style="font-size: 0.55rem; color: var(--text-secondary); display: block;">Judul Artikel</label>
+              <input type="text" class="mock-input" value="10 Ide Promosi Kafe Kekinian untuk Menarik Gen-Z" style="font-size: 0.65rem; padding: 0.2rem;" readonly />
+            </div>
+            <div>
+              <label style="font-size: 0.55rem; color: var(--text-secondary); display: block;">Isi Artikel (Markdown)</label>
+              <textarea style="width: 100%; height: 80px; font-size: 0.6rem; font-family: monospace; border: 1px solid var(--border); border-radius: 4px; padding: 0.2rem; background: var(--bg-primary);" readonly>## Pendahuluan
+Kafe zaman sekarang bukan cuma soal kopi...</textarea>
+            </div>
+          </div>
+          <!-- Buttons -->
+          <div style="display: flex; justify-content: flex-end; gap: 0.35rem;">
+            <button class="mock-button" style="background: #ef4444; font-size: 0.6rem; padding: 0.25rem 0.5rem;">Regenerasi</button>
+            <button class="mock-button" style="background: var(--success); font-size: 0.6rem; padding: 0.25rem 0.5rem;">Setujui & Publish</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Side: Drawer Wireframe Mockup -->
+  <div class="mockup">
+    <div class="mockup-header">Wireframe Pendekatan B: Drawer Inline</div>
+    <div class="mockup-body" style="background: var(--bg-primary); padding: 1rem; position: relative;">
+      <!-- Table Mock -->
+      <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; height: 260px; position: relative; overflow: hidden;">
+        <div style="font-size: 0.6rem; font-weight: bold; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; margin-bottom: 0.25rem;">DAFTAR KATA KUNCI</div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.6rem; border-bottom: 1px solid var(--bg-primary); padding: 0.25rem 0;">
+          <span>Ide Promosi Kafe...</span>
+          <span style="background: var(--selected-bg); color: var(--accent); padding: 1px 4px; border-radius: 4px;">Review Draf</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.6rem; padding: 0.25rem 0; color: var(--text-secondary);">
+          <span>Menu Kuliner Viral...</span>
+          <span>Idle</span>
+        </div>
+        
+        <!-- Drawer Slide Out Mock -->
+        <div style="position: absolute; right: 0; top: 0; bottom: 0; width: 60%; background: var(--bg-secondary); border-left: 2px solid var(--accent); box-shadow: -4px 0 12px rgba(0,0,0,0.15); padding: 0.5rem; display: flex; flex-direction: column; justify-content: space-between; transform: translateX(0); transition: transform 0.3s ease;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; margin-bottom: 0.4rem;">
+              <span style="font-size: 0.6rem; font-weight: bold; color: var(--accent);">Review Artikel</span>
+              <span style="cursor: pointer; font-size: 0.6rem; color: var(--text-secondary);">✕ Close</span>
+            </div>
+            <div style="font-size: 0.65rem; font-weight: bold; margin-bottom: 0.25rem;">10 Ide Promosi Kafe Kekinian...</div>
+            <div style="font-size: 0.55rem; color: var(--text-secondary); max-height: 120px; overflow-y: auto; background: var(--bg-primary); padding: 0.25rem; border-radius: 4px; font-family: monospace;">
+              Kafe zaman sekarang bukan cuma soal kopi, tapi juga visual dan vibes...
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.5rem;">
+            <button class="mock-button" style="background: var(--success); font-size: 0.55rem; padding: 0.25rem 0.5rem; width: 100%;">Setujui & Publish</button>
+            <button class="mock-button" style="background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); font-size: 0.55rem; padding: 0.25rem 0.5rem; width: 100%;">Edit Teks</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin-top: 2rem; margin-bottom: 0.75rem;">Integrasi Pengaturan & Premium Lock / Monetisasi</h3>
+<p class="subtitle">Bagaimana kami mengunci fitur Telegram/WhatsApp Approver untuk pengguna premium.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Preview Halaman Pengaturan (CMS & Approval Channels)</div>
+  <div class="mockup-body" style="background: var(--bg-secondary); border-radius: 6px; padding: 1.25rem;">
+    <!-- Plan Selector simulator -->
+    <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-primary); border: 1px solid var(--border); padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+      <div>
+        <div style="font-size: 0.8rem; font-weight: bold;">Simulasi Lisensi Klien (Testing Mode)</div>
+        <div style="font-size: 0.7rem; color: var(--text-secondary);">Ganti plan untuk menguji respon UI terhadap lock premium.</div>
+      </div>
+      <div style="display: flex; gap: 0.5rem;">
+        <button class="mock-button" style="background: var(--bg-tertiary); color: var(--text-primary); font-size: 0.75rem; font-weight: bold; border: 1px solid var(--border);">FREE PLAN</button>
+        <button class="mock-button" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; font-size: 0.75rem; font-weight: bold; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);">PREMIUM PLAN (PAID)</button>
+      </div>
+    </div>
+
+    <!-- Toggle Channels -->
+    <div style="display: flex; flex-direction: column; gap: 1rem;">
+      <div style="font-weight: bold; font-size: 0.85rem; color: var(--text-secondary); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem;">SALURAN PERSETUJUAN (APPROVAL CHANNELS)</div>
+      
+      <!-- Web Approver Toggle -->
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div style="font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 0.4rem;">
+            🖥️ Web Approver Dashboard <span style="background: var(--accent); color: white; font-size: 0.55rem; padding: 1px 4px; border-radius: 4px; font-weight: bold;">PREMIUM</span>
+          </div>
+          <div style="font-size: 0.7rem; color: var(--text-secondary);">Review dan edit draf tulisan langsung di dashboard Supermat sebelum diposting.</div>
+        </div>
+        <div style="color: var(--warning); font-size: 0.7rem; display: flex; align-items: center; gap: 0.25rem;">
+          🔒 Locked for Premium
+        </div>
+      </div>
+
+      <!-- Telegram Bot Toggle -->
+      <div style="display: flex; justify-content: space-between; align-items: center; opacity: 0.7;">
+        <div>
+          <div style="font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 0.4rem;">
+            🤖 Telegram Bot Approver <span style="background: var(--accent); color: white; font-size: 0.55rem; padding: 1px 4px; border-radius: 4px; font-weight: bold;">PREMIUM</span>
+          </div>
+          <div style="font-size: 0.7rem; color: var(--text-secondary);">Kirim notifikasi draf ke bot telegram pribadi untuk disetujui sekali klik.</div>
+        </div>
+        <div style="color: var(--warning); font-size: 0.7rem; display: flex; align-items: center; gap: 0.25rem;">
+          🔒 Locked for Premium
+        </div>
+      </div>
+
+      <!-- WhatsApp Bot Toggle -->
+      <div style="display: flex; justify-content: space-between; align-items: center; opacity: 0.7;">
+        <div>
+          <div style="font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 0.4rem;">
+            💬 WhatsApp Bot Approver <span style="background: var(--accent); color: white; font-size: 0.55rem; padding: 1px 4px; border-radius: 4px; font-weight: bold;">PREMIUM</span>
+          </div>
+          <div style="font-size: 0.7rem; color: var(--text-secondary);">Persetujuan langsung lewat chat WhatsApp bisnis (menggunakan n8n WhatsApp node).</div>
+        </div>
+        <div style="color: var(--warning); font-size: 0.7rem; display: flex; align-items: center; gap: 0.25rem;">
+          🔒 Locked for Premium
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

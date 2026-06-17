@@ -1,0 +1,72 @@
+{
+  "name": "Super Automation: Sub-workflow Telegram Notifier",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ],
+      "id": "sub-wf-trigger-tg",
+      "name": "Execute Workflow Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json;\nconst messageText = '📢 *Artikel Baru Siap Ditinjau!*\\n\\n• *Klien:* ' + (input.clientName || '') + '\\n• *Kata Kunci:* `' + (input.keyword || '') + '`\\n• *Judul:* \\\"' + (input.title || '') + '\\\"\\n\\nSilakan klik tautan di bawah ini untuk membuka halaman editor CMS klien, meninjau konten/gambar, dan mempublikasikannya:\\n🔗 [Buka Editor Draf CMS](' + (input.draftEditUrl || '') + ')';\nreturn [{\n  json: {\n    chat_id: input.telegramChatId || \"-placeholder-chat-id\",\n    text: messageText,\n    parse_mode: \"Markdown\",\n    disable_web_page_preview: false\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        200
+      ],
+      "id": "prepare-tg-message",
+      "name": "Prepare Telegram Message"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot759492193:AAHw4b9z_placeholderToken_Yp12345/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"chat_id\": \"{{ $json.chat_id }}\", \"text\": {{ JSON.stringify($json.text) }}, \"parse_mode\": \"{{ $json.parse_mode }}\", \"disable_web_page_preview\": {{ $json.disable_web_page_preview }} }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        200
+      ],
+      "id": "send-tg-message",
+      "name": "Send Telegram Message",
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "Prepare Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

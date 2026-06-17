@@ -1,0 +1,90 @@
+{
+  "name": "Super Automation: Adapter Wix Draft Stub",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ],
+      "id": "sub-wf-trigger-wix",
+      "name": "Execute Workflow Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Wix collection data fields\nconst payload = $json.article;\nconst clientName = $json.clientName;\nconst telegramChatId = $json.telegramChatId;\n\nreturn [{\n  json: {\n    clientName,\n    telegramChatId,\n    keyword: payload.primaryKeyword,\n    title: payload.title,\n    wixItemPayload: {\n      title: payload.title,\n      excerpt: payload.excerpt,\n      richTextContent: `<p>${payload.bodyMarkdown.split('\\n').join('</p><p>')}</p>`,\n      status: \"DRAFT\"\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        200
+      ],
+      "id": "wix-schema-mapper",
+      "name": "Schema Wix"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stub for Wix API request. In production, replace this node with Wix Data API HTTP Request node.\nreturn [{\n  json: {\n    id: \"mock-wix-post-id-12345\",\n    message: \"Wix API request simulated\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        200
+      ],
+      "id": "mock-wix-api-request",
+      "name": "Mock Wix Post Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $('Mock Wix Post Request').item.json;\nconst clientName = $('Schema Wix').item.json.clientName;\nconst telegramChatId = $('Schema Wix').item.json.telegramChatId;\nconst keyword = $('Schema Wix').item.json.keyword;\nconst title = $('Schema Wix').item.json.title;\n\n// Wix Dashboard Editor URL\nconst draftEditUrl = `https://manage.wix.com/dashboard/site-id-placeholder/blog/posts`;\n\nreturn [{\n  json: {\n    clientName,\n    telegramChatId,\n    draftEditUrl,\n    keyword,\n    title,\n    status: \"success\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        200
+      ],
+      "id": "finalize-wix-adapter",
+      "name": "Finalize Wix Adapter Data"
+    }
+  ],
+  "connections": {
+    "Schema Wix": {
+      "main": [
+        [
+          {
+            "node": "Mock Wix Post Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock Wix Post Request": {
+      "main": [
+        [
+          {
+            "node": "Finalize Wix Adapter Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Schema Wix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

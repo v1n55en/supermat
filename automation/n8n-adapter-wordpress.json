@@ -1,0 +1,103 @@
+{
+  "name": "Super Automation: Adapter WordPress Draft",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ],
+      "id": "sub-wf-trigger-wp",
+      "name": "Execute Workflow Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Convert Markdown to HTML for WordPress post content\nconst payload = $json.article;\nconst clientName = $json.clientName;\nconst telegramChatId = $json.telegramChatId;\n\nfunction mdToHtml(md) {\n  if (typeof md !== 'string') return '';\n  return md\n    .replace(/^## (.*$)/gim, '<h2>$1</h2>')\n    .replace(/^### (.*$)/gim, '<h3>$1</h3>')\n    .replace(/^\\* (.*$)/gim, '<li>$1</li>')\n    .replace(/\\*\\*(.*)\\*\\*/gim, '<strong>$1</strong>')\n    .replace(/\\*(.*)\\*/gim, '<em>$1</em>')\n    .split(/\\r?\\n/)\n    .map(line => {\n      const l = line.trim();\n      if (!l) return '';\n      if (l.startsWith('<h') || l.startsWith('<li')) return l;\n      return `<p>${l}</p>`;\n    })\n    .filter(Boolean)\n    .join('\\n');\n}\n\nreturn [{\n  json: {\n    clientName,\n    telegramChatId,\n    keyword: payload.primaryKeyword,\n    title: payload.title,\n    wpPostPayload: {\n      title: payload.title,\n      slug: payload.slug,\n      excerpt: payload.excerpt,\n      content: mdToHtml(payload.bodyMarkdown),\n      status: \"draft\"\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        200
+      ],
+      "id": "wp-schema-mapper",
+      "name": "Schema WordPress"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://3ourasia.id/wp-json/wp/v2/posts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.wpPostPayload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        200
+      ],
+      "id": "publish-wp-draft",
+      "name": "Publish WordPress Draft",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wp-api-credentials-placeholder",
+          "name": "WordPress Application Pass"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $('Publish WordPress Draft').item.json;\nconst clientName = $('Schema WordPress').item.json.clientName;\nconst telegramChatId = $('Schema WordPress').item.json.telegramChatId;\nconst keyword = $('Schema WordPress').item.json.keyword;\nconst title = $('Schema WordPress').item.json.title;\n\n// WP response contains edit links under wp-admin\nconst draftEditUrl = `https://3ourasia.id/wp-admin/post.php?post=${res.id}&action=edit`;\n\nreturn [{\n  json: {\n    clientName,\n    telegramChatId,\n    draftEditUrl,\n    keyword,\n    title,\n    status: \"success\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        200
+      ],
+      "id": "finalize-wp-adapter",
+      "name": "Finalize WP Adapter Data"
+    }
+  ],
+  "connections": {
+    "Schema WordPress": {
+      "main": [
+        [
+          {
+            "node": "Publish WordPress Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish WordPress Draft": {
+      "main": [
+        [
+          {
+            "node": "Finalize WP Adapter Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Schema WordPress",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
