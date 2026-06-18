@@ -493,7 +493,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body || {};\nreturn [{\n  json: {\n    clientName: body.clientName || \"Supermat Client\",\n    projectId: body.projectId || \"mwwvwgiw\",\n    telegramChatId: body.telegramChatId || \"\",\n    cmsType: (body.cmsType || \"sanity\").toLowerCase().trim(),\n    article: body.article || null,\n    authToken: body.authToken || \"\"\n  }\n}];"
+        "jsCode": "const body = $json.body || {};\nreturn [{\n  json: {\n    clientName: body.clientName || \"Supermat Client\",\n    projectId: body.projectId || \"mwwvwgiw\",\n    telegramChatId: body.telegramChatId || \"\",\n    cmsType: (body.cmsType || \"sanity\").toLowerCase().trim(),\n    article: body.article || null,\n    authToken: body.authToken || \"\",\n    draftDocId: body.draftDocId || \"\"\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

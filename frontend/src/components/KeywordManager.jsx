@@ -379,6 +379,14 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
 
     const n8nUrl = creds.n8nUrl;
 
+    const draftUrl = drawerKeyword.draftUrl || '';
+    let draftDocId = '';
+    if (draftUrl.includes(';')) {
+      draftDocId = draftUrl.split(';').pop();
+    } else if (draftUrl.includes('post/')) {
+      draftDocId = draftUrl.split('post/').pop();
+    }
+
     fetch(publishUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -391,7 +399,8 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
         waPhone: waPhone, // Clear pending review on backend if active
         projectId: creds.projectId || "",
         studioUrl: creds.studioUrl || "",
-        authToken: creds.authToken || ""
+        authToken: creds.authToken || "",
+        draftDocId: draftDocId
       })
     })
     .then(async (res) => {
