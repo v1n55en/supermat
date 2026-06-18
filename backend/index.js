@@ -416,7 +416,7 @@ app.delete('/api/whatsapp/pending-reviews', async (req, res) => {
  * Endpoint: Run Keyword Automation
  */
 app.post('/api/automation/run', async (req, res) => {
-  const { keyword, Geo, Ln, Client_Name, CMS_Type, Telegram_Chat_ID, n8nUrl: customN8nUrl, waApprover, waPhone, projectId, studioUrl } = req.body;
+  const { keyword, Geo, Ln, Client_Name, CMS_Type, Telegram_Chat_ID, n8nUrl: customN8nUrl, waApprover, waPhone, projectId, studioUrl, authToken } = req.body;
   
   log(`Menerima trigger automasi kata kunci: "${keyword}"`);
   
@@ -455,7 +455,9 @@ app.post('/api/automation/run', async (req, res) => {
         Ln,
         Client_Name,
         CMS_Type,
-        Telegram_Chat_ID
+        Telegram_Chat_ID,
+        projectId,
+        authToken
       })
     });
 
@@ -482,6 +484,11 @@ app.post('/api/automation/run', async (req, res) => {
         success: false,
         message: 'Kriteria kata kunci tidak memenuhi syarat (Workflow n8n berhenti awal, misal: pencarian volume rendah atau tidak lolos penyaringan kecocokan kata kunci).'
       });
+    }
+
+    if (articlePayload) {
+      articlePayload.projectId = projectId || '';
+      articlePayload.authToken = authToken || '';
     }
 
     if (waApprover && cleanPhone && articlePayload) {
@@ -565,7 +572,7 @@ Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* u
 app.post('/api/automation/publish', async (req, res) => {
   log(`Menerima request pemublikasian draf artikel.`);
   
-  const { article, clientName, telegramChatId, cmsType, n8nUrl: customN8nUrl, waPhone, projectId, studioUrl } = req.body;
+  const { article, clientName, telegramChatId, cmsType, n8nUrl: customN8nUrl, waPhone, projectId, studioUrl, authToken } = req.body;
 
   // Resolve target publish webhook
   let targetUrl = process.env.N8N_URL_PUBLISH;
@@ -621,7 +628,9 @@ app.post('/api/automation/publish', async (req, res) => {
         clientName,
         telegramChatId,
         cmsType,
-        article
+        article,
+        projectId,
+        authToken
       })
     });
 
@@ -755,6 +764,8 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
         clientName: pendingReview.clientName,
         telegramChatId: pendingReview.telegramChatId,
         cmsType: pendingReview.cmsType,
+        projectId: pendingReview.article?.projectId || '',
+        authToken: pendingReview.article?.authToken || '',
         article: pendingReview.article
       })
     })

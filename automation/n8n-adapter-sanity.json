@@ -65,13 +65,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://mwwvwgiw.api.sanity.io/v2023-08-01/assets/images/production?filename={{$json.slug}}-{{ (['hero','inline-a','inline-b'][$json.idx] || $json.idx) }}.png",
+        "url": "=https://{{ $('Execute Workflow Trigger').first().json.projectId || 'mwwvwgiw' }}.api.sanity.io/v2023-08-01/assets/images/production?filename={{$json.slug}}-{{ (['hero','inline-a','inline-b'][$json.idx] || $json.idx) }}.png",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer skBXK0a9JwOX4s9YEv0GMfd995SQhzuCL4zgfWW17YfkvXgjd2xdSoYXQZUsvnyghPgqnzgSciyxYYWqj9TCFYjAfJ9c1XSkcoD2mU4JoPe2ITXuyWQf0qYPdspSCZfAYoH9iJedBa2fRJPg2dWTYT6t1LNZMzPVi7uivlUZ1Kodu7Me1SRk"
+              "value": "=Bearer {{ $('Execute Workflow Trigger').first().json.authToken || 'skBXK0a9JwOX4s9YEv0GMfd995SQhzuCL4zgfWW17YfkvXgjd2xdSoYXQZUsvnyghPgqnzgSciyxYYWqj9TCFYjAfJ9c1XSkcoD2mU4JoPe2ITXuyWQf0qYPdspSCZfAYoH9iJedBa2fRJPg2dWTYT6t1LNZMzPVi7uivlUZ1Kodu7Me1SRk' }}"
             },
             {
               "name": "Content-Type",
@@ -183,7 +183,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://mwwvwgiw.api.sanity.io/v2023-08-01/data/mutate/production?returnIds=true&returnDocuments=true",
+        "url": "=https://{{ $('Execute Workflow Trigger').first().json.projectId || 'mwwvwgiw' }}.api.sanity.io/v2023-08-01/data/mutate/production?returnIds=true&returnDocuments=true",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -193,7 +193,7 @@
             },
             {
               "name": "Authorization",
-              "value": "Bearer skBXK0a9JwOX4s9YEv0GMfd995SQhzuCL4zgfWW17YfkvXgjd2xdSoYXQZUsvnyghPgqnzgSciyxYYWqj9TCFYjAfJ9c1XSkcoD2mU4JoPe2ITXuyWQf0qYPdspSCZfAYoH9iJedBa2fRJPg2dWTYT6t1LNZMzPVi7uivlUZ1Kodu7Me1SRk"
+              "value": "=Bearer {{ $('Execute Workflow Trigger').first().json.authToken || 'skBXK0a9JwOX4s9YEv0GMfd995SQhzuCL4zgfWW17YfkvXgjd2xdSoYXQZUsvnyghPgqnzgSciyxYYWqj9TCFYjAfJ9c1XSkcoD2mU4JoPe2ITXuyWQf0qYPdspSCZfAYoH9iJedBa2fRJPg2dWTYT6t1LNZMzPVi7uivlUZ1Kodu7Me1SRk' }}"
             }
           ]
         },
@@ -255,7 +255,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const json = item.json;\n  const binary = item.binary || {};\n  \n  if (binary.data) {\n    const bin = binary.data;\n    try {\n      // Try to parse it as JSON\n      const rawString = Buffer.from(bin.data, 'base64').toString('utf-8').trim();\n      if (rawString.startsWith('{') && rawString.endsWith('}')) {\n        const parsed = JSON.parse(rawString);\n        const imgB64 = parsed.result?.image || parsed.image || parsed.img || '';\n        if (imgB64) {\n          const buf = Buffer.from(imgB64, 'base64');\n          out.push({\n            json: json,\n            binary: {\n              data: {\n                data: buf.toString('base64'),\n                mimeType: 'image/png',\n                fileExtension: 'png',\n                fileName: 'image.png'\n              }\n            }\n          });\n          continue;\n        }\n      }\n    } catch (e) {\n      // Not a valid JSON or parsing failed, fall back to passing binary as-is\n    }\n  }\n  \n  // Pass through as-is if it's already raw binary\n  out.push(item);\n}\nreturn out;"
+        "jsCode": "const out = [];\nconst allItems = $input.all();\nfor (let i = 0; i < allItems.length; i++) {\n  const item = allItems[i];\n  const binary = item.binary || {};\n  \n  // Get matching JSON from Convert Prompt by index\n  let promptJson = {};\n  try {\n    promptJson = $('Convert Prompt').all()[i].json;\n  } catch (e) {\n    // Fallback or ignore\n  }\n  \n  // Merge promptJson into the item's JSON (preserving slug, idx, docId, etc.)\n  const mergedJson = Object.assign({}, promptJson, item.json);\n  \n  if (binary.data) {\n    const bin = binary.data;\n    try {\n      // Try to parse it as JSON\n      const rawString = Buffer.from(bin.data, 'base64').toString('utf-8').trim();\n      if (rawString.startsWith('{') && rawString.endsWith('}')) {\n        const parsed = JSON.parse(rawString);\n        const imgB64 = parsed.result?.image || parsed.image || parsed.img || '';\n        if (imgB64) {\n          const buf = Buffer.from(imgB64, 'base64');\n          out.push({\n            json: mergedJson,\n            binary: {\n              data: {\n                data: buf.toString('base64'),\n                mimeType: 'image/png',\n                fileExtension: 'png',\n                fileName: 'image.png'\n              }\n            }\n          });\n          continue;\n        }\n      }\n    } catch (e) {\n      // Not a valid JSON or parsing failed, fall back\n    }\n  }\n  \n  // Pass through with merged JSON if it's already raw binary\n  out.push({\n    json: mergedJson,\n    binary: binary\n  });\n}\nreturn out;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
