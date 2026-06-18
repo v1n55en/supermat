@@ -304,7 +304,8 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "supermat-trigger",
-        "responseMode": "lastNode"
+        "responseMode": "responseNode",
+        "responseNode": "Final Response"
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
@@ -404,17 +405,19 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1,
       "position": [
-        1400,
+        1550,
         528
       ],
       "id": "exec-telegram-notifier",
-      "name": "Execute Telegram Notifier"
+      "name": "Execute Telegram Notifier",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "httpMethod": "POST",
         "path": "supermat-publish",
-        "responseMode": "lastNode"
+        "responseMode": "responseNode",
+        "responseNode": "Final Response"
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
@@ -474,6 +477,19 @@
       ],
       "id": "resolve-target",
       "name": "Resolve Target"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        1350,
+        528
+      ],
+      "id": "final-response-node",
+      "name": "Final Response"
     }
   ],
   "pinData": {},
@@ -653,7 +669,7 @@
       "main": [
         [
           {
-            "node": "Execute Telegram Notifier",
+            "node": "Final Response",
             "type": "main",
             "index": 0
           }
@@ -664,7 +680,7 @@
       "main": [
         [
           {
-            "node": "Execute Telegram Notifier",
+            "node": "Final Response",
             "type": "main",
             "index": 0
           }
@@ -675,7 +691,7 @@
       "main": [
         [
           {
-            "node": "Execute Telegram Notifier",
+            "node": "Final Response",
             "type": "main",
             "index": 0
           }
@@ -698,6 +714,17 @@
         [
           {
             "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Response": {
+      "main": [
+        [
+          {
+            "node": "Execute Telegram Notifier",
             "type": "main",
             "index": 0
           }
