@@ -432,7 +432,7 @@
           "string": [
             {
               "name": "data.keyword",
-              "value": "={{ $json.body?.keyword || $json.keyword }}"
+              "value": "{{ $('Webhook').first().json.body?.keyword || $('Webhook').first().json.keyword }}"
             }
           ],
           "number": [
@@ -542,7 +542,13 @@
             "index": 0
           }
         ],
-        []
+        [
+          {
+            "node": "Prep Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Create Article": {
@@ -565,7 +571,13 @@
             "index": 0
           }
         ],
-        []
+        [
+          {
+            "node": "Prep Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Sort": {
@@ -595,11 +607,6 @@
         [
           {
             "node": "Riset Google Trends",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Prep Fallback",
             "type": "main",
             "index": 0
           }

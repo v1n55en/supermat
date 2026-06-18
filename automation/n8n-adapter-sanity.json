@@ -399,11 +399,6 @@
       "main": [
         [
           {
-            "node": "Convert Prompt",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Pollinations AI",
             "type": "main",
             "index": 0
@@ -493,6 +488,17 @@
         [
           {
             "node": "Schema Sanity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mutasi Sanity": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
             "type": "main",
             "index": 0
           }
