@@ -40,7 +40,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const res = $('Mock Wix Post Request').first().json;\nconst schema = $('Schema Wix').first().json;\n\n// Wix Dashboard Editor URL\nconst draftEditUrl = `https://manage.wix.com/dashboard/site-id-placeholder/blog/posts`;\n\nreturn [{\n  json: {\n    clientName: schema.clientName,\n    telegramChatId: schema.telegramChatId,\n    draftEditUrl,\n    keyword: schema.keyword,\n    title: schema.title,\n    status: \"success\"\n  }\n}];"
+        "jsCode": "const res = $('Mock Wix Post Request').first().json;\nconst schema = $('Schema Wix').first().json;\nconst triggerData = $('Execute Workflow Trigger').first().json;\n\n// Wix Dashboard Editor URL\nconst draftEditUrl = `https://manage.wix.com/dashboard/site-id-placeholder/blog/posts`;\n\nreturn [{\n  json: {\n    clientName: schema.clientName,\n    telegramChatId: schema.telegramChatId,\n    draftEditUrl,\n    keyword: schema.keyword,\n    title: schema.title,\n    article: triggerData.article || null,\n    status: \"success\"\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

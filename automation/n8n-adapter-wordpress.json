@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const res = $('Publish WordPress Draft').first().json;\nconst schema = $('Schema WordPress').first().json;\n\n// WP response contains edit links under wp-admin\nconst draftEditUrl = `https://3ourasia.id/wp-admin/post.php?post=${res.id}&action=edit`;\n\nreturn [{\n  json: {\n    clientName: schema.clientName,\n    telegramChatId: schema.telegramChatId,\n    draftEditUrl,\n    keyword: schema.keyword,\n    title: schema.title,\n    status: \"success\"\n  }\n}];"
+        "jsCode": "const res = $('Publish WordPress Draft').first().json;\nconst schema = $('Schema WordPress').first().json;\nconst triggerData = $('Execute Workflow Trigger').first().json;\n\n// WP response contains edit links under wp-admin\nconst draftEditUrl = `https://3ourasia.id/wp-admin/post.php?post=${res.id}&action=edit`;\n\nreturn [{\n  json: {\n    clientName: schema.clientName,\n    telegramChatId: schema.telegramChatId,\n    draftEditUrl,\n    keyword: schema.keyword,\n    title: schema.title,\n    article: triggerData.article || null,\n    status: \"success\"\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
