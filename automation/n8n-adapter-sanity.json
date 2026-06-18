@@ -320,7 +320,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return [{\n  json: {\n    clientName: $('Sub-workflow Trigger').item.json.clientName || \"Supermat Client\",\n    telegramChatId: $('Sub-workflow Trigger').item.json.telegramChatId || \"\",\n    draftEditUrl: $('Schema Sanity').item.json.draftEditUrl,\n    keyword: $('Sub-workflow Trigger').item.json.article.primaryKeyword || \"Keyword\",\n    title: $('Sub-workflow Trigger').item.json.article.title || \"Artikel Baru\",\n    status: \"success\"\n  }\n}];"
+        "jsCode": "const triggerData = $('Execute Workflow Trigger').first().json;\nlet schemaData = {};\ntry {\n  schemaData = $('Schema Sanity').first().json;\n} catch (e) {\n  // Ignore or log\n}\n\nreturn [{\n  json: {\n    clientName: triggerData.clientName || \"Supermat Client\",\n    telegramChatId: triggerData.telegramChatId || \"\",\n    draftEditUrl: schemaData.draftEditUrl || \"\",\n    keyword: triggerData.article?.primaryKeyword || \"Keyword\",\n    title: triggerData.article?.title || \"Artikel Baru\",\n    status: \"success\"\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
