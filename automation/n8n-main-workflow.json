@@ -465,10 +465,11 @@
     },
     {
       "parameters": {
-        "jsCode": "const primary = $input.all(0);\nconst fallback = $input.all(1);\nif (primary && primary.length > 0 && primary[0].json?.data?.keyword) {\n  return primary;\n}\nreturn fallback;"
+        "mode": "chooseBranch",
+        "output": "input1"
       },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
       "position": [
         420,
         340
