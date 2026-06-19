@@ -3,23 +3,6 @@
   "nodes": [
     {
       "parameters": {
-        "promptType": "define",
-        "text": "RISET DATA (OPTIONAL)\nJika Anda membutuhkan data terkini atau fakta eksternal spesifik, Anda dapat memanggil tool \"Google Search Riset\" (maksimal 1 kali agar cepat). Jika tidak diperlukan, langsung tulis artikel berdasarkan basis data internal Anda secara kreatif dan profesional. Jangan mengarang statistik palsu.\n\nPERAN\nKamu adalah SEO content strategist dan copywriter profesional untuk brand \"3our\". Tugasmu menulis artikel blog yang SEO-friendly, terasa ditulis manusia, dan enak dibaca — bukan terdengar seperti AI.\n\nTARGET PEMBACA\nPelaku bisnis, marketer, dan pemilik brand di Indonesia yang ingin tumbuh lewat digital marketing. Mereka sibuk, suka konten ringkas dan langsung to-the-point yang bisa dibaca ~5 menit.\n\nTONE & GAYA\n- Santai tapi profesional. Sapa pembaca dengan \"kamu\", dan posisikan brand sebagai \"kita/tim 3our\".\n- Bahasa Indonesia natural sehari-hari. Biarkan istilah marketing umum tetap dalam Bahasa Inggris (engagement, conversion, customer journey, awareness, funnel, hard selling, dll) — jangan diterjemahkan paksa.\n- Variasikan panjang kalimat. Sesekali pakai kalimat pendek dan tegas untuk penekanan. Hindari paragraf panjang yang monoton (maksimal 2-4 kalimat per paragraf).\n- Gunakan konektor percakapan yang luwes seperti \"Jadi,\", \"Nah,\", \"Artinya,\", \"Masalahnya,\" — tapi jangan berlebihan.\n- Boleh pakai analogi, contoh konkret, dan poin bernomor/bullet bila memang membantu keterbacaan.\n\nSTRUKTUR ARTIKEL\n- Paragraf pembuka: pancing dengan menohok asumsi umum atau menyebut masalah nyata yang dialami pembaca, lalu posisikan topik sebagai solusi. Jangan basa-basi.\n- Isi: bagi menjadi beberapa sub-bagian dengan heading (H2/H3) yang jelas dan logis, mengikuti search intent keyword.\n- Penutup: rangkum kunci utama dalam 2-4 poin, akhiri dengan satu kalimat punchline yang menempel, lalu soft CTA yang relevan ke layanan 3our (jangan hard selling).\n\nATURAN SEO\n- Tempatkan keyword utama secara natural di judul, paragraf pembuka, dan beberapa heading — JANGAN keyword stuffing.\n- Gunakan kata turunan/sinonim/LSI agar terasa alami.\n- Pastikan paragraf pembuka langsung menjawab maksud pencarian pembaca.\n- Sarankan internal linking bila relevan.\n\nHAL YANG WAJIB DIHINDARI (agar tidak terdengar seperti AI)\n- Frasa klise: \"di era digital yang serba cepat ini\", \"tak dapat dipungkiri\", \"mari kita selami/bahas lebih dalam\", \"dalam dunia yang terus berkembang\".\n- Transisi kaku berlebihan: \"selain itu\", \"lebih lanjut\", \"dengan demikian\", \"oleh karena itu\" yang dipakai bertubi-tubi.\n- Kalimat pembuka generik berupa definisi (\"X adalah ...\") — mulai dengan hook, bukan kamus.\n- Kesimpulan yang mengulang isi secara kaku. Penutup harus terasa seperti obrolan, bukan ringkasan robotik.\n- Nada terlalu formal, bertele-tele, atau over-promising.\n\nPANJANG\nTargetkan artikel ringkas dan padat (sekitar 600-900 kata), bisa dibaca dalam ~5 menit. Kualitas dan keterbacaan di atas kuantitas.\n\nFORMAT OUTPUT (WAJIB DIPATUHI)\nKembalikan HANYA satu objek JSON valid yang sesuai skema persis ini, tanpa teks lain:\n{\"title\": string, \"slug\": string, \"excerpt\": string, \"body\": string}\nAturan keras:\n- JANGAN bungkus dengan code fence (tanpa ```json atau ```), tanpa markdown, tanpa komentar, tanpa kalimat pembuka/penutup.\n- Output harus berupa JSON tunggal yang bisa langsung di-parse JSON.parse(). Tidak boleh kosong, tidak boleh array kosong, tidak boleh null.\n- Semua keempat field (title, slug, excerpt, body) WAJIB terisi dengan string non-kosong.\n- slug: huruf kecil, kata dipisah tanda hubung, tanpa spasi/simbol.\n- body: berisi isi lengkap artikel (boleh markdown di dalam nilai string body), di-escape dengan benar agar JSON tetap valid.\n- Jika ragu, tetap kembalikan JSON valid sesuai skema; jangan pernah menjelaskan atau meminta klarifikasi.\n\n=========================================\n\nPROMPT UTAMA:\n=Tulis satu artikel blog SEO lengkap dengan struktur SILO untuk keyword utama berikut: {{  $json.data.keyword }}.\n\nManfaatkan data riset ini sebagai konteks (jangan ditulis ulang mentah di artikel): search volume {{  $json.data.searchVolume }}, keyword difficulty {{  $json.data.difficulty }}, traffic potential {{  $json.data.trafficPotential }}.\n\nPastikan artikel mengikuti seluruh aturan PERAN, TONE, STRUKTUR, dan SEO yang sudah ditetapkan. Sertakan judul yang menarik, paragraf pembuka ber-hook, heading yang logis, dan penutup dengan soft CTA ke layanan 3our.\n\nFORMAT OUTPUT (WAJIB):\nKembalikan hasil dalam bentuk JSON dengan tepat 4 field berikut:\n- \"title\": judul artikel yang menarik (tanpa tanda markdown).\n- \"slug\": versi slug dari judul (huruf kecil, dipisah tanda hubung).\n- \"excerpt\": ringkasan singkat 1-2 kalimat.\n- \"body\": isi lengkap artikel dalam format markdown (gunakan heading ##, paragraf, dan list bila perlu).\nJangan tulis judul di dalam body. Jangan tambahkan teks apa pun di luar JSON.",
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.chainLlm",
-      "typeVersion": 1.4,
-      "position": [
-        512,
-        528
-      ],
-      "id": "59e3645b-cb3d-4f41-8132-a74fb2891442",
-      "name": "AI Agent",
-      "retryOnFail": true,
-      "waitBetweenTries": 5000
-    },
-    {
-      "parameters": {
         "url": "https://serpapi.com/search.json?engine=google_trends",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpQueryAuth",
@@ -53,10 +36,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        624,
-        144
+        14384,
+        10768
       ],
-      "id": "b4afe255-36a9-4806-9a24-1fac4a0c6fd1",
+      "id": "78764983-9456-47bc-a124-0674ade594a4",
       "name": "Riset Google Trends",
       "credentials": {
         "httpQueryAuth": {
@@ -73,10 +56,10 @@
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        832,
-        144
+        14592,
+        10768
       ],
-      "id": "1cdde7dc-48c6-4e02-b86d-d20babcb6ef0",
+      "id": "2e64c78f-e137-4031-9242-75f907c6cacf",
       "name": "Rising Topic"
     },
     {
@@ -113,10 +96,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1456,
-        128
+        15216,
+        10752
       ],
-      "id": "7e78e1a0-af78-4332-a429-cfa574064aac",
+      "id": "00016329-aa36-495c-b40c-2a0ea2a635cf",
       "name": "Riset SVolume",
       "credentials": {
         "httpHeaderAuth": {
@@ -162,24 +145,24 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1696,
-        128
+        15456,
+        10752
       ],
-      "id": "997441b6-732b-4838-a025-5c1a2c39e7ad",
+      "id": "394f6d73-95dc-407f-97d4-f334b1a0087d",
       "name": "If Volume Validation"
     },
     {
       "parameters": {
-        "modelName": "models/gemini-2.5-flash",
+        "modelName": "models/gemini-3.1-flash-lite",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
       "position": [
-        512,
-        752
+        14256,
+        11392
       ],
-      "id": "b013dfbf-c66e-4d18-9586-bf8096d01b8d",
+      "id": "b92601c0-a111-487a-bd93-3e8d4cb09dd0",
       "name": "Create Article",
       "credentials": {
         "googlePalmApi": {
@@ -222,10 +205,10 @@
       "type": "n8n-nodes-base.httpRequestTool",
       "typeVersion": 4.3,
       "position": [
-        656,
-        752
+        14400,
+        11408
       ],
-      "id": "f4d8cdc7-0850-4bba-944e-41eac37c4651",
+      "id": "c466e395-384a-492a-b76d-ac25b068b6a5",
       "name": "Google Search Riset",
       "credentials": {
         "httpQueryAuth": {
@@ -262,10 +245,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1184,
-        144
+        14944,
+        10768
       ],
-      "id": "50bd4a29-fe17-40a7-840d-34559079f207",
+      "id": "9e21b278-83bd-4127-86d4-5689d3cc1369",
       "name": "Keyword Match?"
     },
     {
@@ -283,10 +266,10 @@
       "type": "n8n-nodes-base.sort",
       "typeVersion": 1,
       "position": [
-        144,
-        528
+        13904,
+        11152
       ],
-      "id": "2b495f2e-f958-463f-8d26-a179cbd796c1",
+      "id": "d280b76e-12d1-4519-b38e-1f213833d3df",
       "name": "Sort"
     },
     {
@@ -294,26 +277,26 @@
       "type": "n8n-nodes-base.limit",
       "typeVersion": 1,
       "position": [
-        352,
-        528
+        14112,
+        11152
       ],
-      "id": "48d4e0d9-4548-4d47-ba66-c3a8a37c32e6",
+      "id": "4031628d-0ede-4da3-9fe8-53db6ce0ca4e",
       "name": "Limit"
     },
     {
       "parameters": {
         "httpMethod": "POST",
         "path": "supermat-trigger",
-        "responseMode": "responseNode",
-        "responseNode": "Final Response"
+        "responseMode": "lastNode",
+        "options": {}
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [
-        416,
-        0
+        14176,
+        10624
       ],
-      "id": "webhook-trigger",
+      "id": "d2d6b956-e3e9-40ef-8401-b7b890ad1aa5",
       "name": "Webhook"
     },
     {
@@ -323,10 +306,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        750,
-        528
+        14512,
+        11152
       ],
-      "id": "unified-payload-generator",
+      "id": "77c4c7ac-e795-4e78-b54e-4efc93e2d7f6",
       "name": "Unified Post Payload Generator"
     },
     {
@@ -336,8 +319,7 @@
         "rules": {
           "rules": [
             {
-              "value2": "sanity",
-              "output": 0
+              "value2": "sanity"
             },
             {
               "value2": "wordpress",
@@ -353,182 +335,141 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 1,
       "position": [
-        950,
-        528
+        14720,
+        11152
       ],
-      "id": "cms-router",
+      "id": "166508f9-4700-4b28-b5d0-2d3fc861a6fd",
       "name": "CMS Router"
     },
     {
       "parameters": {
-        "workflowId": "sanity-adapter"
+        "workflowId": "k7yaVHeCMgjWpWSn",
+        "options": {}
       },
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1,
       "position": [
-        1150,
-        400
+        14912,
+        11024
       ],
-      "id": "exec-sanity-adapter",
+      "id": "6c0058e2-8f4d-4cfe-b492-8dcd4b3b8e23",
       "name": "Adapter: Sanity Publisher"
     },
     {
       "parameters": {
-        "workflowId": "wordpress-adapter"
+        "workflowId": "lHWaDdAa0XC4OvH6",
+        "options": {}
       },
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1,
       "position": [
-        1150,
-        528
+        14912,
+        11152
       ],
-      "id": "exec-wordpress-adapter",
+      "id": "ee405636-1e0b-4987-b297-890ac0982301",
       "name": "Adapter: WordPress Publisher"
     },
     {
       "parameters": {
-        "workflowId": "wix-adapter"
+        "workflowId": "94j1ym4BEZ1SEhzS",
+        "options": {}
       },
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1,
       "position": [
-        1150,
-        650
+        14912,
+        11280
       ],
-      "id": "exec-wix-adapter",
+      "id": "f7b8e664-29da-484a-8b2d-731955d79702",
       "name": "Adapter: Wix Publisher"
     },
     {
       "parameters": {
-        "workflowId": "telegram-notifier"
+        "workflowId": "h46kqvMFyFbC6YKR",
+        "options": {}
       },
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1,
       "position": [
-        1550,
-        528
+        15168,
+        11152
       ],
-      "id": "exec-telegram-notifier",
-      "name": "Execute Telegram Notifier",
-      "onError": "continueRegularOutput"
+      "id": "2c91341f-9e2b-4aab-86e1-617879d60db2",
+      "name": "Execute Telegram Notifier"
     },
     {
       "parameters": {
         "httpMethod": "POST",
         "path": "supermat-publish",
-        "responseMode": "responseNode",
-        "responseNode": "Final Response"
+        "responseMode": "lastNode",
+        "options": {}
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [
-        750,
-        700
+        14512,
+        11328
       ],
-      "id": "publish-webhook-trigger",
+      "id": "9737331b-94b1-4bb2-b9ae-11a7a8987530",
       "name": "Publish Webhook"
     },
     {
       "parameters": {
-        "keepOnlySet": true,
-        "values": {
-          "string": [
-            {
-              "name": "data.keyword",
-              "value": "{{ $('Webhook').first().json.body?.keyword || $('Webhook').first().json.keyword }}"
-            }
-          ],
-          "number": [
-            {
-              "name": "data.globalSearchVolume",
-              "value": 0
-            },
-            {
-              "name": "data.difficulty",
-              "value": 0
-            },
-            {
-              "name": "data.trafficPotential",
-              "value": 0
-            }
-          ]
-        },
         "options": {}
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3,
       "position": [
-        320,
-        200
+        14080,
+        10832
       ],
-      "id": "prep-fallback",
+      "id": "a9a481b2-f1cf-48c6-bdf3-cad385cfd1c1",
       "name": "Prep Fallback"
     },
     {
       "parameters": {
-        "mode": "chooseBranch",
-        "output": "input1"
+        "mode": "chooseBranch"
       },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 2.1,
       "position": [
-        420,
-        340
+        14192,
+        10976
       ],
-      "id": "resolve-target",
+      "id": "46f7ce37-5b2a-4ce3-b2c2-815859074ac9",
       "name": "Resolve Target"
     },
     {
       "parameters": {
-        "options": {}
+        "promptType": "define",
+        "text": "=Tulis satu artikel blog SEO lengkap dengan struktur SILO untuk keyword utama berikut: {{  $json.data.keyword }}.\n\nManfaatkan data riset ini sebagai konteks (jangan ditulis ulang mentah di artikel): search volume {{  $json.data.searchVolume }}, keyword difficulty {{  $json.data.difficulty }}, traffic potential {{  $json.data.trafficPotential }}.\n\nPastikan artikel mengikuti seluruh aturan PERAN, TONE, STRUKTUR, dan SEO yang sudah ditetapkan. Sertakan judul yang menarik, paragraf pembuka ber-hook, heading yang logis, dan penutup dengan soft CTA sesuai brand {{ $('Webhook').item.json.body.Client_Name }}\n\nFORMAT OUTPUT (WAJIB):\nKembalikan hasil dalam bentuk JSON dengan tepat 4 field berikut:\n- \"title\": judul artikel yang menarik (tanpa tanda markdown).\n- \"slug\": versi slug dari judul (huruf kecil, dipisah tanda hubung).\n- \"excerpt\": ringkasan singkat 1-2 kalimat.\n- \"body\": isi lengkap artikel dalam format markdown (gunakan heading ##, paragraf, dan list bila perlu).\nJangan tulis judul di dalam body. Jangan tambahkan teks apa pun di luar JSON.",
+        "options": {
+          "systemMessage": "=RISET DATA (WAJIB SEBELUM MENULIS)\nGunakan parameter pencarian lokasi {{ $('Riset Google Trends').item.json.search_parameters.geo }} dan bahasa {{ $('Riset Google Trends').item.json.search_parameters.hl }}, dan utamakan hanya sumber yang valid dan kredibel: situs resmi/produk, dokumentasi resmi, media/publikasi ternama, lembaga riset, jurnal, atau data statistik resmi. Hindari forum anonim, konten spam, atau sumber yang tidak jelas kredibilitasnya. Bila perlu, sebutkan secara wajar sumber/rujukan di dalam artikel.\nSebelum menulis artikel, kamu WAJIB memanggil tool \"Google Search Riset\" untuk mencari fakta, data, statistik, fitur produk, dan informasi terkini tentang keyword/topik artikel. Lakukan 1-3 kali pencarian bila perlu. Dasarkan SEMUA klaim faktual, angka, dan detail pada hasil pencarian Google tersebut. JANGAN mengarang fakta, statistik, fitur, harga, atau klaim apa pun yang tidak didukung hasil riset. Jika informasi tidak ditemukan, tulis secara umum dan jangan membuat data palsu.\n\nPERAN\nKamu adalah SEO content strategist dan copywriter profesional untuk brand \"{{ $('Webhook').item.json.body.Client_Name }}\". Tugasmu menulis artikel blog yang SEO-friendly, terasa ditulis manusia, dan enak dibaca — bukan terdengar seperti AI.\n\nTARGET PEMBACA\nPembaca yang ingin membaca terkait topik {{ $('Webhook').item.json.body.keyword }} di Indonesia. Mereka sibuk, suka konten ringkas dan langsung to-the-point yang bisa dibaca ~5 menit.\n\nTONE & GAYA\n- Santai tapi profesional. Sapa pembaca dengan \"kamu\", dan posisikan brand sebagai \"kita\".\n- Bahasa Indonesia natural sehari-hari. Biarkan istilah marketing umum tetap dalam Bahasa Inggris (engagement, conversion, customer journey, awareness, funnel, hard selling, dll) — jangan diterjemahkan paksa.\n- Variasikan panjang kalimat. Sesekali pakai kalimat pendek dan tegas untuk penekanan. Hindari paragraf panjang yang monoton (maksimal 2-4 kalimat per paragraf).\n- Gunakan konektor percakapan yang luwes seperti \"Jadi,\", \"Nah,\", \"Artinya,\", \"Masalahnya,\" — tapi jangan berlebihan.\n- Boleh pakai analogi, contoh konkret, dan poin bernomor/bullet bila memang membantu keterbacaan.\n\nSTRUKTUR ARTIKEL\n- Paragraf pembuka: pancing dengan menohok asumsi umum atau menyebut masalah nyata yang dialami pembaca, lalu posisikan topik sebagai solusi. Jangan basa-basi.\n- Isi: bagi menjadi beberapa sub-bagian dengan heading (H2/H3) yang jelas dan logis, mengikuti search intent keyword.\n- Penutup: rangkum kunci utama dalam 2-4 poin, akhiri dengan satu kalimat punchline yang menempel, lalu soft CTA yang relevan ke layanan 3our (jangan hard selling).\n\nATURAN SEO\n- Tempatkan keyword utama secara natural di judul, paragraf pembuka, dan beberapa heading — JANGAN keyword stuffing.\n- Gunakan kata turunan/sinonim/LSI agar terasa alami.\n- Pastikan paragraf pembuka langsung menjawab maksud pencarian pembaca.\n- Sarankan internal linking bila relevan.\n\nHAL YANG WAJIB DIHINDARI (agar tidak terdengar seperti AI)\n- Frasa klise: \"di era digital yang serba cepat ini\", \"tak dapat dipungkiri\", \"mari kita selami/bahas lebih dalam\", \"dalam dunia yang terus berkembang\".\n- Transisi kaku berlebihan: \"selain itu\", \"lebih lanjut\", \"dengan demikian\", \"oleh karena itu\" yang dipakai bertubi-tubi.\n- Kalimat pembuka generik berupa definisi (\"X adalah ...\") — mulai dengan hook, bukan kamus.\n- Kesimpulan yang mengulang isi secara kaku. Penutup harus terasa seperti obrolan, bukan ringkasan robotik.\n- Nada terlalu formal, bertele-tele, atau over-promising.\n\nPANJANG\nTargetkan artikel ringkas dan padat (sekitar 600-900 kata), bisa dibaca dalam ~5 menit. Kualitas dan keterbacaan di atas kuantitas.\n\nFORMAT OUTPUT (WAJIB DIPATUHI)\nKembalikan HANYA satu objek JSON valid yang sesuai skema persis ini, tanpa teks lain:\n{\"title\": string, \"slug\": string, \"excerpt\": string, \"body\": string}\nAturan keras:\n- JANGAN bungkus dengan code fence (tanpa ```json atau ```), tanpa markdown, tanpa komentar, tanpa kalimat pembuka/penutup.\n- Output harus berupa JSON tunggal yang bisa langsung di-parse JSON.parse(). Tidak boleh kosong, tidak boleh array kosong, tidak boleh null.\n- Semua keempat field (title, slug, excerpt, body) WAJIB terisi dengan string non-kosong.\n- slug: huruf kecil, kata dipisah tanda hubung, tanpa spasi/simbol.\n- body: berisi isi lengkap artikel (boleh markdown di dalam nilai string body), di-escape dengan benar agar JSON tetap valid.\n- Jika ragu, tetap kembalikan JSON valid sesuai skema; jangan pernah menjelaskan atau meminta klarifikasi.\n\nRISET DATA (WAJIB SEBELUM MENULIS)\nGunakan parameter pencarian lokasi {{ $('Riset Google Trends').item.json.search_parameters.geo }} dan bahasa {{ $('Riset Google Trends').item.json.search_parameters.hl }}, dan utamakan hanya sumber yang valid dan kredibel: situs resmi/produk, dokumentasi resmi, media/publikasi ternama, lembaga riset, jurnal, atau data statistik resmi. Hindari forum anonim, konten spam, atau sumber yang tidak jelas kredibilitasnya. Bila perlu, sebutkan secara wajar sumber/rujukan di dalam artikel.\nSebelum menulis artikel, kamu WAJIB memanggil tool \"Google Search Riset\" untuk mencari fakta, data, statistik, fitur produk, dan informasi terkini tentang keyword/topik artikel. Lakukan 1-3 kali pencarian bila perlu. Dasarkan SEMUA klaim faktual, angka, dan detail pada hasil pencarian Google tersebut. JANGAN mengarang fakta, statistik, fitur, harga, atau klaim apa pun yang tidak didukung hasil riset. Jika informasi tidak ditemukan, tulis secara umum dan jangan membuat data palsu.\n\nPERAN\nKamu adalah SEO content strategist dan copywriter profesional untuk brand \"{{ $('Webhook').item.json.body.Client_Name }}\". Tugasmu menulis artikel blog yang SEO-friendly, terasa ditulis manusia, dan enak dibaca — bukan terdengar seperti AI.\n\nTARGET PEMBACA\nPembaca yang ingin membaca terkait topik {{ $('Webhook').item.json.body.keyword }} di Indonesia. Mereka sibuk, suka konten ringkas dan langsung to-the-point yang bisa dibaca ~5 menit.\n\nTONE & GAYA\n- Santai tapi profesional. Sapa pembaca dengan \"kamu\", dan posisikan brand sebagai \"kita\".\n- Bahasa Indonesia natural sehari-hari. Biarkan istilah marketing umum tetap dalam Bahasa Inggris (engagement, conversion, customer journey, awareness, funnel, hard selling, dll) — jangan diterjemahkan paksa.\n- Variasikan panjang kalimat. Sesekali pakai kalimat pendek dan tegas untuk penekanan. Hindari paragraf panjang yang monoton (maksimal 2-4 kalimat per paragraf).\n- Gunakan konektor percakapan yang luwes seperti \"Jadi,\", \"Nah,\", \"Artinya,\", \"Masalahnya,\" — tapi jangan berlebihan.\n- Boleh pakai analogi, contoh konkret, dan poin bernomor/bullet bila memang membantu keterbacaan.\n\nSTRUKTUR ARTIKEL\n- Paragraf pembuka: pancing dengan menohok asumsi umum atau menyebut masalah nyata yang dialami pembaca, lalu posisikan topik sebagai solusi. Jangan basa-basi.\n- Isi: bagi menjadi beberapa sub-bagian dengan heading (H2/H3) yang jelas dan logis, mengikuti search intent keyword.\n- Penutup: rangkum kunci utama dalam 2-4 poin, akhiri dengan satu kalimat punchline yang menempel, lalu soft CTA yang relevan ke layanan 3our (jangan hard selling).\n\nATURAN SEO\n- Tempatkan keyword utama secara natural di judul, paragraf pembuka, dan beberapa heading — JANGAN keyword stuffing.\n- Gunakan kata turunan/sinonim/LSI agar terasa alami.\n- Pastikan paragraf pembuka langsung menjawab maksud pencarian pembaca.\n- Sarankan internal linking bila relevan.\n\nHAL YANG WAJIB DIHINDARI (agar tidak terdengar seperti AI)\n- Frasa klise: \"di era digital yang serba cepat ini\", \"tak dapat dipungkiri\", \"mari kita selami/bahas lebih dalam\", \"dalam dunia yang terus berkembang\".\n- Transisi kaku berlebihan: \"selain itu\", \"lebih lanjut\", \"dengan demikian\", \"oleh karena itu\" yang dipakai bertubi-tubi.\n- Kalimat pembuka generik berupa definisi (\"X adalah ...\") — mulai dengan hook, bukan kamus.\n- Kesimpulan yang mengulang isi secara kaku. Penutup harus terasa seperti obrolan, bukan ringkasan robotik.\n- Nada terlalu formal, bertele-tele, or over-promising.\n\nPANJANG\nTargetkan artikel ringkas dan padat (sekitar 600-900 kata), bisa dibaca dalam ~5 menit. Kualitas dan keterbacaan di atas kuantitas.\n\nFORMAT OUTPUT (WAJIB DIPATUHI)\nKembalikan HANYA satu objek JSON valid yang sesuai skema persis ini, tanpa teks lain:\n{\"title\": string, \"slug\": string, \"excerpt\": string, \"body\": string}\nAturan keras:\n- JANGAN bungkus dengan code fence (tanpa \`\`\`json atau \`\`\`), tanpa markdown, tanpa komentar, tanpa kalimat pembuka/penutup.\n- Output harus berupa JSON tunggal yang bisa langsung di-parse JSON.parse(). Tidak boleh kosong, tidak boleh array kosong, tidak boleh null.\n- Semua keempat field (title, slug, excerpt, body) WAJIB terisi dengan string non-kosong.\n- slug: huruf kecil, kata dipisah tanda hubung, tanpa spasi/simbol.\n- body: berisi isi lengkap artikel (boleh markdown di dalam nilai string body), di-escape dengan benar agar JSON tetap valid.\n- Jika ragu, tetap kembalikan JSON valid sesuai skema; jangan pernah menjelaskan atau meminta klarifikasi."
       },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3,
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
       "position": [
-        1350,
-        528
+        14256,
+        11152
       ],
-      "id": "final-response-node",
-      "name": "Final Response"
+      "id": "ce19ddd1-8646-45be-b285-8024c8e8e9cc",
+      "name": "AI Agent"
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body || {};\nreturn [{\n  json: {\n    clientName: body.clientName || \"Supermat Client\",\n    projectId: body.projectId || \"mwwvwgiw\",\n    telegramChatId: body.telegramChatId || \"\",\n    cmsType: (body.cmsType || \"sanity\").toLowerCase().trim(),\n    article: body.article || null,\n    authToken: body.authToken || \"\",\n    draftDocId: body.draftDocId || \"\"\n  }\n}];"
+        "jsCode": "const body = $json.body || {};\nreturn [{\n  json: {\n    clientName: body.clientName || \"Supermat Client\",\n    projectId: body.projectId || \"mwwvwgiw\",\n    telegramChatId: body.telegramChatId || \"\",\n    cmsType: (body.cmsType || \"sanity\").toLowerCase().trim(),\n    article: body.article || null,\n    authToken: body.authToken || \"\",\n    draftDocId: body.draftDocId || \"\" // <--- PASTIKAN BARIS INI ADA\n  }\n}];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        850,
-        700
+        14720,
+        11328
       ],
-      "id": "normalize-publish-payload",
-      "name": "Normalize Publish Payload"
+      "id": "64d690dc-e289-4cf7-9ff1-598865dbabef",
+      "name": "Normalize publish payload"
     }
   ],
-  "pinData": {},
   "connections": {
-    "Publish Webhook": {
-      "main": [
-        [
-          {
-            "node": "Normalize Publish Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "AI Agent": {
-      "main": [
-        [
-          {
-            "node": "Unified Post Payload Generator",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Riset Google Trends": {
       "main": [
         [
@@ -586,6 +527,17 @@
           {
             "node": "AI Agent",
             "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Search Riset": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
             "index": 0
           }
         ]
@@ -680,20 +632,14 @@
     },
     "Adapter: Sanity Publisher": {
       "main": [
-        [
-          {
-            "node": "Final Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Adapter: WordPress Publisher": {
       "main": [
         [
           {
-            "node": "Final Response",
+            "node": "Execute Telegram Notifier",
             "type": "main",
             "index": 0
           }
@@ -704,7 +650,18 @@
       "main": [
         [
           {
-            "node": "Final Response",
+            "node": "Execute Telegram Notifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize publish payload",
             "type": "main",
             "index": 0
           }
@@ -733,18 +690,18 @@
         ]
       ]
     },
-    "Final Response": {
+    "AI Agent": {
       "main": [
         [
           {
-            "node": "Execute Telegram Notifier",
+            "node": "Unified Post Payload Generator",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Normalize Publish Payload": {
+    "Normalize publish payload": {
       "main": [
         [
           {
@@ -756,22 +713,8 @@
       ]
     }
   },
-  "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "versionId": "cc860c31-4973-493a-85b2-fcdad8e94610",
+  "pinData": {},
   "meta": {
-    "templateCredsSetupCompleted": true,
     "instanceId": "b28f851de9172bac92a701ac54bd1ae2e8717eb34f542e6ff87ca809ae544e5f"
-  },
-  "id": "k7yaVHeCMgjWpWSn",
-  "tags": [
-    {
-      "updatedAt": "2026-06-13T08:42:34.193Z",
-      "createdAt": "2026-06-13T08:42:34.193Z",
-      "id": "F7mm9ooc0AtajESu",
-      "name": "project"
-    }
-  ]
+  }
 }
