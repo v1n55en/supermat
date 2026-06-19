@@ -102,7 +102,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const passedDraftDocId = $('Execute Workflow Trigger').first().json.draftDocId;\nif (passedDraftDocId) {\n  return []; // Skip image generation on publish\n}\n\n// Bisa dapet dari doc atau dari top-level\nconst docId = $json.docId;\nconst doc   = $json.doc ?? $json;\n\nconst title = doc?.title || 'Untitled';\nconst slug  = doc?.slug?.current || doc?.slug || 'untitled';\nconst textBlocks = (doc?.body || []).filter(b => b?._type === 'block');\nconst firstPara = (textBlocks.find(b => b.style === 'normal')?.children?.[0]?.text || '').slice(0, 220);\nconst keywords = (doc?.keywords || [])\n  .filter(k => typeof k === 'string')\n  .slice(0, 6);\n\nconst primary = doc?.primaryKeyword || keywords[0] || title;\n\nconst baseStyle = 'clean, modern, high detail, blog hero image, negative space for overlay, no text, no watermark';\n\nconst prompts = [\n  `High-quality blog hero image about \"${primary}\". ${baseStyle}. Visual focus: concept overview, center composition.`,\n  `Supporting illustration for article \"${title}\". Focus on a concrete sub-aspect: key mechanism or example. ${baseStyle}. Different angle from hero.`,\n  `Second supporting visual for \"${title}\". Complementary perspective (macro or contextual scene). ${baseStyle}.`\n];\n\nreturn prompts.map((prompt, idx) => ({ json: { docId, title, slug, keywords, prompt, idx, totalImages: prompts.length } }));\n"
+        "jsCode": "// Bisa dapet dari doc atau dari top-level\nconst docId = $json.docId;\nconst doc   = $json.doc ?? $json;\n\nconst title = doc?.title || 'Untitled';\nconst slug  = doc?.slug?.current || doc?.slug || 'untitled';\nconst textBlocks = (doc?.body || []).filter(b => b?._type === 'block');\nconst firstPara = (textBlocks.find(b => b.style === 'normal')?.children?.[0]?.text || '').slice(0, 220);\nconst keywords = (doc?.keywords || [])\n  .filter(k => typeof k === 'string')\n  .slice(0, 6);\n\nconst primary = doc?.primaryKeyword || keywords[0] || title;\n\nconst baseStyle = 'clean, modern, high detail, blog hero image, negative space for overlay, no text, no watermark';\n\nconst prompts = [\n  `High-quality blog hero image about \"${primary}\". ${baseStyle}. Visual focus: concept overview, center composition.`,\n  `Supporting illustration for article \"${title}\". Focus on a concrete sub-aspect: key mechanism or example. ${baseStyle}. Different angle from hero.`,\n  `Second supporting visual for \"${title}\". Complementary perspective (macro or contextual scene). ${baseStyle}.`\n];\n\nreturn prompts.map((prompt, idx) => ({ json: { docId, title, slug, keywords, prompt, idx, totalImages: prompts.length } }));"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -335,6 +335,40 @@
       ],
       "id": "finalize-sanity-adapter",
       "name": "Finalize Adapter Data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "publish-check",
+              "leftValue": "={{ $('Execute Workflow Trigger').first().json.draftDocId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1620,
+        350
+      ],
+      "id": "route-publish-flow",
+      "name": "Route Publish Flow"
     }
   ],
   "connections": {
@@ -448,7 +482,7 @@
       "main": [
         [
           {
-            "node": "Convert Prompt",
+            "node": "Route Publish Flow",
             "type": "main",
             "index": 0
           }
@@ -504,6 +538,24 @@
         [
           {
             "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Publish Flow": {
+      "main": [
+        [
+          {
+            "node": "Convert Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add Internal Links",
             "type": "main",
             "index": 0
           }
