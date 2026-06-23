@@ -36,6 +36,33 @@ const getSanityDraftUrl = (projId, draftId, studioUrl) => {
   return `https://${baseId}.sanity.studio/structure/post;${draftId}`;
 };
 
+// Helper to parse and return friendly error messages from n8n response
+const getFriendlyN8nError = (errorText, defaultPrefix) => {
+  let parsed = null;
+  try {
+    parsed = JSON.parse(errorText);
+  } catch (e) {
+    if (typeof errorText === 'string') {
+      if (errorText.includes('429')) return 'n8n/API Limit: Terlalu banyak permintaan (Rate Limit 429). Harap tunggu beberapa saat.';
+      if (errorText.includes('401') || errorText.includes('unauthorized')) return 'Akses ditolak (Unauthorized 401). Harap periksa kembali kunci API / Token Anda.';
+      if (errorText.includes('404')) return 'Webhook n8n tidak ditemukan (404). Pastikan workflow n8n sudah diaktifkan (Active).';
+    }
+  }
+
+  if (parsed) {
+    const msg = parsed.message || parsed.error || '';
+    if (msg === 'Error in workflow') {
+      return 'Terjadi error di salah satu node n8n (misal: API key mati, rate limit Google/RapidAPI, atau error penulisan AI). Silakan buka n8n untuk melihat detail eksekusi.';
+    }
+    if (msg.includes('not registered')) {
+      return 'Webhook n8n belum aktif (404). Silakan aktifkan workflow Anda dengan mengklik tombol toggle Active di pojok kanan atas editor n8n.';
+    }
+    return msg;
+  }
+
+  return `${defaultPrefix}: ${errorText}`;
+};
+
 // Initialize Supabase Client
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
@@ -466,7 +493,7 @@ app.post('/api/automation/run', async (req, res) => {
     if (!response.ok) {
       const errorText = await response.text();
       log(`[Error n8n] ${errorText}`);
-      throw new Error(`n8n failed: ${errorText}`);
+      throw new Error(getFriendlyN8nError(errorText, 'n8n failed'));
     }
 
     const responseData = await response.json();
@@ -641,8 +668,8 @@ app.post('/api/automation/publish', async (req, res) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      log(`[Error n8n publish] ${errorText}`);
-      throw new Error(`n8n publish failed: ${errorText}`);
+      log(`[Error n8n] ${errorText}`);
+      throw new Error(getFriendlyN8nError(errorText, 'n8n publish failed'));
     }
 
     const data = await response.json();
@@ -782,7 +809,10 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       })
     })
     .then(async (n8nRes) => {
-      if (!n8nRes.ok) throw new Error(`n8n publish failed: ${n8nRes.status}`);
+      if (!n8nRes.ok) {
+        const errorText = await n8nRes.text();
+        throw new Error(getFriendlyN8nError(errorText, `n8n publish failed with status ${n8nRes.status}`));
+      }
       const responseData = await n8nRes.json();
       const draftUrl = responseData?.draftEditUrl || responseData?.json?.draftEditUrl || `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
       
