@@ -235,24 +235,25 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
       log(`[Backend] Hubungan sukses. Data draf diterima dari n8n.`);
       
       let articlePayload = null;
+      let draftUrl = '';
       if (responseData) {
         const item = Array.isArray(responseData) ? responseData[0] : responseData;
         articlePayload = item.article || item.json?.article || item;
+        draftUrl = responseData?.draftEditUrl || responseData?.json?.draftEditUrl || item?.draftEditUrl || item?.json?.draftEditUrl || `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
       }
 
       if (responseData.waPending) {
         log(`[Review WhatsApp] Draf artikel dikirim ke WhatsApp ${waPhone} untuk persetujuan.`);
-        updateKeywordStatus(id, 'Review Ready', null, articlePayload, true);
+        updateKeywordStatus(id, 'Review Ready', draftUrl, articlePayload, true);
         setRunningId(null);
         onArticleCreated();
       } else if (webApproverEnabled && articlePayload && (articlePayload.title || articlePayload.bodyMarkdown)) {
         log(`[Review] Berhasil memuat draf artikel ke Web Approver.`);
-        updateKeywordStatus(id, 'Review Ready', null, articlePayload, false);
+        updateKeywordStatus(id, 'Review Ready', draftUrl, articlePayload, false);
         setRunningId(null);
         onArticleCreated();
       } else {
         const cms = target.cms || 'sanity';
-        const draftUrl = responseData?.draftEditUrl || responseData?.json?.draftEditUrl || `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
         updateKeywordStatus(id, 'Draft Created', draftUrl);
         log(`[CMS] Draf berhasil langsung diposting ke CMS: ${draftUrl}`);
         setRunningId(null);

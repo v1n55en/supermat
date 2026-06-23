@@ -509,7 +509,8 @@ app.post('/api/automation/run', async (req, res) => {
               n8n_url: customN8nUrl || '',
               article: articlePayload,
               status: 'pending',
-              created_at: new Date().toISOString()
+              created_at: new Date().toISOString(),
+              draft_url: draftUrl || ''
             });
           if (error) throw error;
           savedDb = true;
@@ -532,7 +533,8 @@ app.post('/api/automation/run', async (req, res) => {
           n8nUrl: customN8nUrl || '',
           article: articlePayload,
           status: 'pending',
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          draftUrl: draftUrl || ''
         };
         writeDB(db);
       }
@@ -757,6 +759,14 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       return res.json({ status: false, error: 'Publish URL not configured' });
     }
 
+    let draftDocId = '';
+    const draftUrl = pendingReview.draftUrl || '';
+    if (draftUrl.includes(';')) {
+      draftDocId = draftUrl.split(';').pop();
+    } else if (draftUrl.includes('post/')) {
+      draftDocId = draftUrl.split('post/').pop();
+    }
+
     // Real publish to n8n (async)
     fetch(targetUrl, {
       method: 'POST',
@@ -767,7 +777,8 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
         cmsType: pendingReview.cmsType,
         projectId: pendingReview.article?.projectId || '',
         authToken: pendingReview.article?.authToken || '',
-        article: pendingReview.article
+        article: pendingReview.article,
+        draftDocId: draftDocId
       })
     })
     .then(async (n8nRes) => {
