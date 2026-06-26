@@ -599,27 +599,36 @@ export default function KeywordManager({ user, onArticleCreated, plan }) {
                   required
                 />
               </div>
-              <div className="form-group" style={{ width: '100px', marginBottom: 0 }}>
+              <div className="form-group" style={{ width: '160px', marginBottom: 0 }}>
                 <label className="form-label">Geo</label>
-                <input 
-                  type="text" 
+                <select 
                   className="form-input" 
                   value={newGeo}
                   onChange={(e) => setNewGeo(e.target.value)}
-                  placeholder="ID" 
                   disabled={runningId !== null}
-                />
+                  style={{ cursor: 'pointer', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', height: '40px', borderRadius: '6px', padding: '0 10px' }}
+                >
+                  <option value="ID">ID (Indonesia)</option>
+                  <option value="US">US (United States)</option>
+                  <option value="MY">MY (Malaysia)</option>
+                  <option value="SG">SG (Singapore)</option>
+                  <option value="GB">GB (United Kingdom)</option>
+                  <option value="AU">AU (Australia)</option>
+                </select>
               </div>
-              <div className="form-group" style={{ width: '100px', marginBottom: 0 }}>
+              <div className="form-group" style={{ width: '180px', marginBottom: 0 }}>
                 <label className="form-label">Bahasa</label>
-                <input 
-                  type="text" 
+                <select 
                   className="form-input" 
                   value={newLn}
                   onChange={(e) => setNewLn(e.target.value)}
-                  placeholder="id"
                   disabled={runningId !== null}
-                />
+                  style={{ cursor: 'pointer', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', height: '40px', borderRadius: '6px', padding: '0 10px' }}
+                >
+                  <option value="id">id (Bahasa Indonesia)</option>
+                  <option value="en">en (English)</option>
+                  <option value="ms">ms (Bahasa Melayu)</option>
+                </select>
               </div>
               <div className="form-group" style={{ width: '180px', marginBottom: 0 }}>
                 <label className="form-label">Eksekusi / Jadwal</label>
