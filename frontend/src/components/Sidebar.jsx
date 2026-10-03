@@ -1,12 +1,15 @@
-import React from 'react';
-import { Terminal, BarChart2, Settings, LogOut, Rocket, User } from 'lucide-react';
 
-export default function Sidebar({ activeTab, setActiveTab, user, onLogout, plan, onPlanChange }) {
+import { Terminal, BarChart2, Settings, LogOut, Rocket, User, CreditCard } from 'lucide-react';
+
+export default function Sidebar({ activeTab, setActiveTab, user, onLogout, plan, usage }) {
   const navItems = [
     { id: 'keywords', label: 'Kontrol Automasi', icon: Terminal },
     { id: 'analytics', label: 'Analitik & Insights', icon: BarChart2 },
-    { id: 'settings', label: 'Pengaturan CMS', icon: Settings },
+    { id: 'settings', label: 'Pengaturan CMS & API', icon: Settings },
+    { id: 'billing', label: 'Langganan', icon: CreditCard },
   ];
+  const used = usage?.runsThisMonth ?? 0, limit = usage?.limit ?? 0;
+  const pct = limit ? Math.min(100, Math.round(used / limit * 100)) : 0;
 
   return (
     <aside style={styles.sidebar}>
@@ -17,7 +20,7 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout, plan,
         </div>
         <div>
           <h2 style={styles.brandTitle}>Supermat</h2>
-          <span style={styles.brandVersion}>v1.0.0</span>
+          <span style={styles.brandVersion}>by 3Our · v2.0</span>
         </div>
       </div>
 
@@ -28,26 +31,28 @@ export default function Sidebar({ activeTab, setActiveTab, user, onLogout, plan,
         </div>
         <div style={styles.userInfo}>
           <p style={styles.userName} title={user?.brandName}>{user?.brandName || 'My Brand'}</p>
-          <span style={styles.userRole}>{user?.niche || 'F&B'} Niche</span>
+          <span style={styles.userRole}>{user?.email}</span>
         </div>
       </div>
 
       {/* Plan Badge Section */}
       <div style={styles.planSection}>
         {plan === 'premium' ? (
-          <div style={styles.premiumBadge}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>👑 PREMIUM PLAN</span>
-          </div>
+          <button onClick={() => setActiveTab('billing')} style={{ ...styles.premiumBadge, width: '100%', cursor: 'pointer' }} title="Kelola langganan">
+            <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>👑 PAKET PRO</span>
+          </button>
         ) : (
           <div style={styles.freeBadgeContainer}>
-            <span style={styles.freeBadge}>FREE PLAN</span>
-            <button 
-              onClick={() => onPlanChange('premium')} 
-              style={styles.upgradeBtn}
-              title="Upgrade ke Premium untuk membuka semua fitur"
-            >
+            <span style={styles.freeBadge}>PAKET FREE</span>
+            <button onClick={() => setActiveTab('billing')} style={styles.upgradeBtn} title="Upgrade ke Pro untuk membuka semua fitur">
               👑 Upgrade
             </button>
+          </div>
+        )}
+        {limit > 0 && (
+          <div style={styles.usageBox} title={`${used} dari ${limit} artikel bulan ini`}>
+            <div style={styles.usageLabel}><span>Kuota artikel bulan ini</span><span>{used}/{limit}</span></div>
+            <div style={styles.usageTrack}><div style={{ ...styles.usageFill, width: pct + '%', backgroundColor: pct >= 100 ? 'var(--accent-red)' : 'var(--accent-cyan)' }} /></div>
           </div>
         )}
       </div>
@@ -242,6 +247,10 @@ const styles = {
     fontWeight: 'bold',
     color: 'var(--text-muted)'
   },
+  usageBox: { marginTop: '0.75rem' },
+  usageLabel: { display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.3rem' },
+  usageTrack: { height: '6px', borderRadius: '999px', backgroundColor: 'var(--bg-base)', border: '1px solid var(--border-muted)', overflow: 'hidden' },
+  usageFill: { height: '100%', borderRadius: '999px', transition: 'width 0.3s ease' },
   upgradeBtn: {
     padding: '0.25rem 0.5rem',
     fontSize: '0.7rem',

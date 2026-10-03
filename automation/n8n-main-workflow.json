@@ -1,114 +1,93 @@
 {
-  "name": "Super Automation: Main Writer & Router",
+  "name": "Supermat API: Generate & Publish (3Our)",
   "nodes": [
     {
-      "parameters": {
-        "url": "https://serpapi.com/search.json?engine=google_trends",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpQueryAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "q",
-              "value": "={{ $json.body?.keyword || $json.body?.query || $json.keyword || $json.query }}"
-            },
-            {
-              "name": "geo",
-              "value": "={{ $json.body?.Geo || $json.Geo || 'ID' }}"
-            },
-            {
-              "name": "ln",
-              "value": "={{ $json.body?.Ln || $json.Ln || 'id' }}"
-            },
-            {
-              "name": "date",
-              "value": "={{ $now.minus({days: 7}).format('yyyy-MM-dd') }} {{ $now.format('yyyy-MM-dd') }}"
-            },
-            {
-              "name": "data_type",
-              "value": "RELATED_QUERIES"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        14384,
-        10768
-      ],
-      "id": "78764983-9456-47bc-a124-0674ade594a4",
-      "name": "Riset Google Trends",
-      "credentials": {
-        "httpQueryAuth": {
-          "id": "uWPCUkzKY25iNKuY",
-          "name": "Query Auth account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "fieldToSplitOut": "related_queries.rising",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.splitOut",
+      "id": "st-sticky-overview",
+      "name": "Sticky Overview",
+      "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        14592,
-        10768
+        -1120,
+        60
       ],
-      "id": "2e64c78f-e137-4031-9242-75f907c6cacf",
-      "name": "Rising Topic"
-    },
-    {
       "parameters": {
-        "url": "https://ahrefs-keyword-research.p.rapidapi.com/keyword-metrics?",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "keyword",
-              "value": "={{ $json.query }}"
-            }
-          ]
-        },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-rapidapi-host",
-              "value": "ahrefs-keyword-research.p.rapidapi.com"
-            },
-            {
-              "name": "x-rapidapi-key",
-              "value": "bcf9bfca3cmsh9bd7c8d4ddaee19p1bde3fjsna78c77394971"
-            }
-          ]
-        },
-        "options": {
-          "redirect": {}
-        }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        15216,
-        10752
-      ],
-      "id": "00016329-aa36-495c-b40c-2a0ea2a635cf",
-      "name": "Riset SVolume",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "xQUbAhd82f94HQYh",
-          "name": "Rapidapi"
-        }
+        "width": 560,
+        "height": 1180,
+        "color": 7,
+        "content": "## 🚀 3Our Supermat API (SEO Article Automation)\nBackend untuk web app **Supermat** (supermat-three.vercel.app). Semua kunci riset & AI (SerpAPI, RapidAPI/Ahrefs, Gemini) milik 3Our dan tersimpan sebagai credential n8n — user cukup pakai **API key 3Our** (header `X-Supermat-Key`) + kredensial CMS mereka sendiri.\n\n**Endpoint**\n- `POST /webhook/supermat-trigger` — riset + tulis artikel. Body: `{ keyword, Geo, Ln, Client_Name, niche?, tone?, wordCount? }` → `{ status, article:{title, slug, excerpt, bodyMarkdown, keywords, primaryKeyword, searchVolume, difficulty, …}, research }`\n- `POST /webhook/supermat-publish` — kirim artikel ke CMS user. Body: `{ cmsType:'wordpress'|'wix'|'sanity', action:'draft'|'publish', cms:{ wordpress:{url,user,appPassword} | wix:{siteId,apiKey} | sanity:{projectId,dataset,token} }, article, postId? }` → `{ status, postId, draftEditUrl, publicUrl, message }`\n\n**API key** dibaca dari env `SUPERMAT_API_KEYS` (pisah koma) atau daftar default di node *Auth & Normalize*. Backend Supermat menyimpan key ini di env `SUPERMAT_API_KEY`.\n\n**Error** selalu dibalas JSON `{ status:'error', message }` dengan HTTP code yang sesuai (401/400/502)."
       }
     },
     {
+      "id": "st-sticky-generate",
+      "name": "Sticky Generate",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        60
+      ],
+      "parameters": {
+        "width": 2980,
+        "height": 560,
+        "color": 6,
+        "content": "## ① GENERATE — riset keyword → artikel (Gemini)\n**Auth & Normalize** cek API key + rapikan input → **Riset Google Trends** (SerpAPI, related queries 3 bulan, geo/bahasa user) → **Riset Autocomplete** (SerpAPI Google Autocomplete, cadangan bila Trends kosong) → **Pilih Kandidat** (seed keyword + maks 3 query relevan) → **Riset SVolume** (Ahrefs via RapidAPI, per kandidat) → **Tentukan Target** (volume terbesar; fallback seed) → **AI Agent** (Gemini + tool Google Search SerpAPI untuk fakta, geo/bahasa mengikuti user, CTA ke brand user) → **Susun Artikel** → **Respond Generate**. Semua call eksternal *continue on error* supaya artikel tetap jadi walau riset gagal."
+      }
+    },
+    {
+      "id": "st-sticky-publish",
+      "name": "Sticky Publish",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        700
+      ],
+      "parameters": {
+        "width": 2980,
+        "height": 520,
+        "color": 4,
+        "content": "## ② PUBLISH — kirim artikel ke CMS user\n**Auth & Normalize (Publish)** validasi key, cmsType, kredensial CMS & artikel → **CMS Router** → adapter sub-workflow (**WordPress**, **Wix**, Sanity legacy) → **Respond Publish**. Adapter mengembalikan format standar `{ status, postId, draftEditUrl, publicUrl, postStatus, message }`. `action:'draft'` menyimpan draf; `action:'publish'` menerbitkan (kirim `postId` untuk menerbitkan draf yang sudah ada)."
+      }
+    },
+    {
+      "id": "n-webhook-generate",
+      "name": "Webhook Generate",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        300
+      ],
+      "webhookId": "4443f0f9-062a-45ed-891f-47479690bf5b",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "supermat-trigger",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "n-auth-normalize",
+      "name": "Auth & Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// 3Our Supermat API — validasi API key & normalisasi input untuk endpoint GENERATE\n// Key dibaca dari env n8n SUPERMAT_API_KEYS (pisah koma) bila ada, kalau tidak pakai daftar di bawah.\nconst DEFAULT_KEYS = ['SPM-3OUR-LIVE-7Q4K-2026'];\nlet keys = DEFAULT_KEYS;\ntry { const e = String($env.SUPERMAT_API_KEYS || '').trim(); if (e) keys = e.split(',').map(s => s.trim()).filter(Boolean); } catch (err) { /* env access diblokir -> pakai default */ }\n\nconst headers = $json.headers || {};\nconst body = $json.body || {};\nconst bearer = String(headers.authorization || '').replace(/^Bearer\\s+/i, '').trim();\nconst key = String(headers['x-supermat-key'] || headers['x-api-key'] || bearer || body.apiKey || '').trim();\nconst ok = !!key && keys.includes(key);\n\nconst keyword = String(body.keyword || body.query || '').trim();\nlet statusCode = 200, error = '';\nif (!ok) { statusCode = 401; error = 'API key tidak valid. Kirim header X-Supermat-Key.'; }\nelse if (!keyword) { statusCode = 400; error = 'Field \"keyword\" wajib diisi.'; }\n\nreturn [{ json: {\n  ok: statusCode === 200, statusCode, error,\n  keyword,\n  geo: String(body.Geo || body.geo || 'ID').toUpperCase(),\n  ln: String(body.Ln || body.ln || 'id').toLowerCase(),\n  clientName: String(body.Client_Name || body.clientName || body.brandName || 'Brand Anda').trim(),\n  niche: String(body.niche || '').trim(),\n  tone: String(body.tone || '').trim(),\n  wordCount: Math.min(Math.max(Number(body.wordCount) || 800, 400), 1500),\n  requestId: String(body.requestId || ('req_' + Date.now().toString(36))),\n} }];\n"
+      }
+    },
+    {
+      "id": "n-auth-ok-",
+      "name": "Auth OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -20,
+        300
+      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -119,61 +98,273 @@
           },
           "conditions": [
             {
-              "id": "0272b36e-30d7-4f6f-8a59-720dddc1c685",
-              "leftValue": "={{ $json.data.globalSearchVolume }}",
-              "rightValue": 0,
+              "id": "c1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
               "operator": {
-                "type": "number",
-                "operation": "gt"
-              }
-            },
-            {
-              "id": "1a96249e-1433-48c2-b47c-b795d4e022a9",
-              "leftValue": "={{ $json.data.difficulty }}",
-              "rightValue": "null",
-              "operator": {
-                "type": "string",
-                "operation": "notEquals"
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
               }
             }
           ],
           "combinator": "and"
         },
-        "looseTypeValidation": true,
         "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        15456,
-        10752
-      ],
-      "id": "394f6d73-95dc-407f-97d4-f334b1a0087d",
-      "name": "If Volume Validation"
+      }
     },
     {
-      "parameters": {
-        "modelName": "models/gemini-3.1-flash-lite",
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
-      "typeVersion": 1,
+      "id": "n-respond-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
       "position": [
-        14256,
-        11392
+        200,
+        500
       ],
-      "id": "b92601c0-a111-487a-bd93-3e8d4cb09dd0",
-      "name": "Create Article",
-      "credentials": {
-        "googlePalmApi": {
-          "id": "kdz6GGbuqBy4p3Pt",
-          "name": "Google Gemini(PaLM) Api Veri"
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', message: $json.error, requestId: $json.requestId || null }) }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode || 400 }}"
         }
       }
     },
     {
+      "id": "n-riset-trends",
+      "name": "Riset Google Trends",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        200,
+        300
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "E7NNgmviGDIm3aE3",
+          "name": "SerpAPI (Query Auth)"
+        }
+      },
+      "onError": "continueRegularOutput",
       "parameters": {
-        "toolDescription": "Cari informasi faktual terkini dari Google tentang sebuah topik/keyword. Gunakan tool ini untuk mengumpulkan fakta, data, statistik, fitur produk, dan referensi nyata sebelum menulis artikel, agar tulisan berdasarkan data riset asli dan tidak mengarang.",
+        "url": "https://serpapi.com/search.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "engine",
+              "value": "google_trends"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.keyword }}"
+            },
+            {
+              "name": "geo",
+              "value": "={{ $json.geo }}"
+            },
+            {
+              "name": "hl",
+              "value": "={{ $json.ln }}"
+            },
+            {
+              "name": "date",
+              "value": "today 3-m"
+            },
+            {
+              "name": "data_type",
+              "value": "RELATED_QUERIES"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "n-riset-autocomplete",
+      "name": "Riset Autocomplete",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        300
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "E7NNgmviGDIm3aE3",
+          "name": "SerpAPI (Query Auth)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "url": "https://serpapi.com/search.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "engine",
+              "value": "google_autocomplete"
+            },
+            {
+              "name": "q",
+              "value": "={{ $('Auth & Normalize').first().json.keyword }}"
+            },
+            {
+              "name": "gl",
+              "value": "={{ $('Auth & Normalize').first().json.geo.toLowerCase() }}"
+            },
+            {
+              "name": "hl",
+              "value": "={{ $('Auth & Normalize').first().json.ln }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "n-pilih-kandidat",
+      "name": "Pilih Kandidat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Pilih kandidat keyword dari Google Trends (rising + top) yang masih relevan dengan seed keyword.\n// Seed keyword SELALU jadi kandidat pertama, jadi alur tidak pernah mati walau Trends kosong/error.\nconst N = $('Auth & Normalize').first().json;\nlet t = {}; try { t = $('Riset Google Trends').first().json || {}; } catch (e) {}\nconst ac = $input.first().json || {}; // SerpAPI google_autocomplete\nconst rq = t.related_queries || {};\nconst pool = [\n  ...(rq.rising || []), ...(rq.top || []),\n].map(x => String(x.query || '').trim()).concat((ac.suggestions || []).map(s => String(s.value || '').trim())).filter(Boolean);\n\nconst seed = N.keyword.toLowerCase();\nconst stop = new Set(['di', 'ke', 'dari', 'yang', 'dan', 'untuk', 'dengan', 'ada', 'adalah', 'itu', 'ini', 'cara', 'tips', 'info', 'the', 'a', 'an', 'of', 'for', 'in', 'on', 'to']);\nconst terms = [seed, ...seed.split(/\\s+/).map(w => w.replace(/[^a-z0-9]/g, '')).filter(w => w.length > 2 && !stop.has(w))];\nconst esc = s => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\nconst matches = q => terms.some(tm => tm.includes(' ') ? q.includes(tm) : new RegExp('\\\\b' + esc(tm) + '\\\\b', 'i').test(q));\n\nconst matched = pool.filter(q => q.toLowerCase() !== seed && matches(q.toLowerCase()));\nconst uniq = [...new Set([N.keyword, ...matched])].slice(0, 4);\nreturn uniq.map((q, i) => ({ json: { query: q, isSeed: i === 0, source: i === 0 ? 'seed' : 'trends/autocomplete', trendsError: t.error ? String(t.error.message || t.error) : '' } }));\n"
+      }
+    },
+    {
+      "id": "n-riset-svolume",
+      "name": "Riset SVolume",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        860,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "DHz0caqWkCEuxqry",
+          "name": "Rapidapi"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "url": "https://ahrefs-keyword-research.p.rapidapi.com/keyword-metrics",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "keyword",
+              "value": "={{ $json.query }}"
+            },
+            {
+              "name": "country",
+              "value": "={{ $('Auth & Normalize').first().json.geo.toLowerCase() }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-rapidapi-host",
+              "value": "ahrefs-keyword-research.p.rapidapi.com"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 800
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "n-tentukan-target",
+      "name": "Tentukan Target",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Gabungkan metrik Ahrefs (RapidAPI) per kandidat, pilih target keyword terbaik.\n// Prioritas: volume terbesar dengan difficulty valid; fallback: seed keyword tanpa metrik.\nconst N = $('Auth & Normalize').first().json;\nconst cands = $('Pilih Kandidat').all().map(i => i.json);\nconst metrics = $input.all().map(i => i.json || {});\nconst num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\n\nconst rows = cands.map((c, i) => {\n  const m = metrics[i] || {}; const d = m.data || m || {};\n  const diffRaw = d.difficulty;\n  return {\n    query: c.query, isSeed: !!c.isSeed,\n    searchVolume: num(d.globalSearchVolume ?? d.searchVolume ?? d.volume),\n    difficulty: (diffRaw === null || diffRaw === undefined || diffRaw === 'null' || diffRaw === '') ? null : num(diffRaw),\n    trafficPotential: num(d.trafficPotential),\n    cpc: num(d.cpc),\n    error: m.error ? String(m.error.message || m.error) : '',\n  };\n});\nconst valid = rows.filter(r => r.searchVolume > 0).sort((a, b) => b.searchVolume - a.searchVolume);\nconst seedRow = rows.find(r => r.isSeed) || { query: N.keyword, searchVolume: 0, difficulty: null, trafficPotential: 0 };\nconst best = valid[0] || seedRow;\n\nreturn [{ json: {\n  ...N,\n  targetKeyword: best.query,\n  searchVolume: best.searchVolume,\n  difficulty: best.difficulty,\n  trafficPotential: best.trafficPotential,\n  seedMetrics: { searchVolume: seedRow.searchVolume, difficulty: seedRow.difficulty },\n  candidates: rows,\n  relatedQueries: rows.map(r => r.query).filter(q => q !== best.query),\n  geoLower: String(N.geo || 'ID').toLowerCase(),\n} }];\n"
+      }
+    },
+    {
+      "id": "n-ai-agent",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1300,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Tulis satu artikel blog SEO lengkap (struktur SILO) untuk keyword utama: {{ $json.targetKeyword }}.\nKeyword asal yang diminta klien: {{ $json.keyword }}. Brand/klien: {{ $json.clientName }}{{ $json.niche ? ' (bidang: ' + $json.niche + ')' : '' }}.\nNegara target: {{ $json.geo }} · Bahasa artikel: {{ $json.ln === 'id' ? 'Bahasa Indonesia' : $json.ln }}.{{ $json.tone ? ' Gaya tulisan yang diminta: ' + $json.tone + '.' : '' }}\nPanjang WAJIB: minimal {{ $json.wordCount }} kata (hitung dengan cermat, jangan kurang), maksimal {{ Math.round($json.wordCount * 1.3) }} kata.\n\nKonteks riset (jangan ditulis mentah): search volume {{ $json.searchVolume }}, keyword difficulty {{ $json.difficulty ?? 'n/a' }}, traffic potential {{ $json.trafficPotential }}. Query terkait yang sedang naik: {{ ($json.relatedQueries || []).slice(0,5).join(', ') || '-' }}.\n\nIkuti seluruh aturan PERAN, TONE, STRUKTUR, dan SEO. Judul menarik, pembuka ber-hook, heading logis, penutup dengan soft CTA untuk brand {{ $json.clientName }}.\n\nFORMAT OUTPUT (WAJIB): JSON dengan tepat 4 field: \"title\", \"slug\", \"excerpt\", \"body\" (markdown, tanpa judul di dalam body). Jangan tambahkan teks apa pun di luar JSON.",
+        "options": {
+          "systemMessage": "=RISET DATA (WAJIB SEBELUM MENULIS)\nSebelum menulis, panggil tool \"Google Search Riset\" 1-3 kali untuk mengumpulkan fakta, data, statistik, dan informasi terkini tentang topik. Utamakan sumber kredibel (situs resmi, media ternama, lembaga riset, data statistik resmi). Dasarkan semua klaim faktual pada hasil riset; JANGAN mengarang angka, fitur, harga, atau klaim. Bila tidak ditemukan, tulis secara umum tanpa data palsu. Lokasi pencarian: {{ $json.geo }}, bahasa: {{ $json.ln }}.\n\nPERAN\nKamu SEO content strategist dan copywriter profesional untuk brand \"{{ $json.clientName }}\". Tulis artikel blog yang SEO-friendly, terasa ditulis manusia, dan enak dibaca.\n\nTARGET PEMBACA\nOrang yang mencari topik \"{{ $json.keyword }}\" di {{ $json.geo === 'ID' ? 'Indonesia' : $json.geo }}. Mereka sibuk; konten ringkas, to-the-point, bisa dibaca ±5 menit.\n\nTONE & GAYA\n- Santai tapi profesional. Sapa pembaca dengan \"kamu\", posisikan brand sebagai \"kami/kita\".\n- Bahasa natural sehari-hari sesuai bahasa artikel; istilah marketing umum (engagement, conversion, funnel, awareness) boleh tetap Inggris.\n- Variasikan panjang kalimat; paragraf maksimal 2-4 kalimat. Konektor percakapan (\"Jadi,\", \"Nah,\", \"Masalahnya,\") secukupnya.\n- Boleh analogi, contoh konkret, dan list bila membantu.\n\nSTRUKTUR\n- Pembuka: hook yang menohok asumsi umum/masalah nyata pembaca, lalu posisikan topik sebagai solusi.\n- Isi: beberapa sub-bagian dengan heading H2/H3 yang logis sesuai search intent.\n- Penutup: rangkum 2-4 poin kunci, satu punchline, lalu soft CTA relevan ke brand \"{{ $json.clientName }}\" (bukan hard selling, jangan sebut pihak lain).\n\nATURAN SEO\n- Keyword utama natural di judul, pembuka, dan beberapa heading — tanpa keyword stuffing. Gunakan sinonim/LSI.\n- Pembuka langsung menjawab maksud pencarian.\n\nHINDARI (agar tidak terdengar AI)\n- Klise: \"di era digital yang serba cepat ini\", \"tak dapat dipungkiri\", \"mari kita selami\", \"dalam dunia yang terus berkembang\".\n- Transisi kaku bertubi-tubi (\"selain itu\", \"lebih lanjut\", \"dengan demikian\").\n- Pembuka berupa definisi kamus; kesimpulan yang mengulang kaku; nada over-promising.\n\nFORMAT OUTPUT (WAJIB)\nKembalikan HANYA satu objek JSON valid: {\"title\": string, \"slug\": string, \"excerpt\": string, \"body\": string}\n- Tanpa code fence, tanpa teks lain. Harus bisa di-parse JSON.parse().\n- Semua field non-kosong. slug: huruf kecil, dipisah tanda hubung. body: markdown lengkap dengan heading ## dan ###, di-escape dengan benar."
+        }
+      }
+    },
+    {
+      "id": "n-gemini",
+      "name": "Gemini Writer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1220,
+        520
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "X4qY80NDFbDxQZZU",
+          "name": "Google Gemini(PaLM) Api Veri"
+        }
+      },
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {
+          "temperature": 0.7
+        }
+      }
+    },
+    {
+      "id": "n-search-tool",
+      "name": "Google Search Riset",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.3,
+      "position": [
+        1420,
+        520
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "E7NNgmviGDIm3aE3",
+          "name": "SerpAPI (Query Auth)"
+        }
+      },
+      "parameters": {
+        "toolDescription": "Cari informasi faktual terkini dari Google tentang sebuah topik/keyword. Gunakan untuk mengumpulkan fakta, data, statistik, dan referensi nyata sebelum menulis artikel.",
         "url": "https://serpapi.com/search.json",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpQueryAuth",
@@ -186,51 +377,62 @@
             },
             {
               "name": "q",
-              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', `Kata kunci atau pertanyaan pencarian Google untuk mengumpulkan fakta/data tentang topik artikel. Biasanya berupa keyword utama artikel.`, 'string') }}"
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('q', `Kata kunci atau pertanyaan pencarian Google untuk mengumpulkan fakta/data tentang topik artikel.`, 'string') }}"
             },
             {
               "name": "gl",
-              "value": "us"
+              "value": "={{ $('Tentukan Target').first().json.geoLower }}"
             },
             {
               "name": "hl",
-              "value": "en"
+              "value": "={{ $('Tentukan Target').first().json.ln }}"
+            },
+            {
+              "name": "num",
+              "value": "8"
             }
           ]
         },
         "options": {},
         "optimizeResponse": true,
         "dataField": "organic_results"
-      },
-      "type": "n8n-nodes-base.httpRequestTool",
-      "typeVersion": 4.3,
-      "position": [
-        14400,
-        11408
-      ],
-      "id": "c466e395-384a-492a-b76d-ac25b068b6a5",
-      "name": "Google Search Riset",
-      "credentials": {
-        "httpQueryAuth": {
-          "id": "uWPCUkzKY25iNKuY",
-          "name": "Query Auth account"
-        }
       }
     },
     {
+      "id": "n-susun-artikel",
+      "name": "Susun Artikel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Parse output AI Agent -> Unified Article Payload yang dikembalikan ke pemanggil API.\nconst T = $('Tentukan Target').first().json;\nconst ai = $input.first().json || {};\n\nfunction safeParse(str) {\n  if (!str) return null;\n  if (typeof str === 'object') return str;\n  const s = String(str);\n  try { return JSON.parse(s); } catch (e) {}\n  const clean = s.replace(/```json/gi, '').replace(/```/g, '').trim();\n  const a = clean.indexOf('{'), b = clean.lastIndexOf('}');\n  if (a >= 0 && b > a) { try { return JSON.parse(clean.slice(a, b + 1)); } catch (e) {} }\n  return null;\n}\nconst raw = ai.output ?? ai.text ?? ai;\nconst parsed = safeParse(raw) || {};\n\nconst slugify = s => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90);\nconst title = String(parsed.title || '').trim();\nconst body = String(parsed.body || parsed.bodyMarkdown || parsed.content || '').trim();\nif (!title || !body) {\n  return [{ json: { ok: false, statusCode: 502, error: 'AI tidak mengembalikan artikel yang valid. Coba lagi.', raw: typeof raw === 'string' ? raw.slice(0, 500) : raw, requestId: T.requestId } }];\n}\nconst excerpt = String(parsed.excerpt || body.replace(/[#*_>`-]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 160)).trim();\nconst words = body.split(/\\s+/).filter(Boolean).length;\nconst keywords = [...new Set([T.targetKeyword, T.keyword, ...(T.relatedQueries || [])].filter(Boolean))].slice(0, 8);\n\nreturn [{ json: {\n  ok: true, statusCode: 200,\n  status: 'ok',\n  requestId: T.requestId,\n  keyword: T.keyword,\n  clientName: T.clientName,\n  geo: T.geo, ln: T.ln,\n  article: {\n    title,\n    slug: slugify(parsed.slug) || slugify(title),\n    excerpt,\n    bodyMarkdown: body,\n    keywords,\n    primaryKeyword: T.targetKeyword,\n    searchVolume: T.searchVolume,\n    difficulty: T.difficulty,\n    trafficPotential: T.trafficPotential,\n    wordCount: words,\n    language: T.ln,\n    generatedAt: new Date().toISOString(),\n    model: 'gemini',\n  },\n  research: { candidates: T.candidates, relatedQueries: T.relatedQueries },\n} }];\n"
+      }
+    },
+    {
+      "id": "n-artikel-ok-",
+      "name": "Artikel OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1860,
+        300
+      ],
       "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict",
+            "typeValidation": "loose",
             "version": 2
           },
           "conditions": [
             {
-              "id": "e3735779-dd7f-4e44-a1f5-25bbc74054e2",
-              "leftValue": "={{ (() => {\n  const q = String($json.query || '').toLowerCase();\n  let seed = [];\n  try {\n    const raw = String($('Webhook').item.json.body?.keyword || $('Webhook').item.json.keyword || '').toLowerCase().trim();\n    if (raw) seed.push(raw);\n  } catch(e) {\n    try {\n      seed = $('List Focus Keyword').all().map(i => String(i.json.keyword || '').toLowerCase().trim()).filter(Boolean);\n    } catch(err) {\n      seed = [];\n    }\n  }\n  const stopWords = new Set(['di', 'ke', 'dari', 'yang', 'dan', 'untuk', 'dengan', 'ada', 'adalah', 'itu', 'ini', 'makanan', 'kuliner', 'minuman', 'resep', 'cara', 'tips', 'info']);\n  const terms = [];\n  seed.forEach(phrase => {\n    terms.push(phrase);\n    phrase.split(/\\s+/).forEach(word => {\n      const clean = word.replace(/[^a-z0-9]/g, '');\n      if (clean.length > 2 && !stopWords.has(clean)) {\n        terms.push(clean);\n      }\n    });\n  });\n  const uniqueTerms = [...new Set(terms)].filter(Boolean);\n  const esc = s => s.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, '\\\\$&');\n  return uniqueTerms.some(t => {\n    if (t.includes(' ')) {\n      return q.includes(t);\n    } else {\n      return new RegExp('\\\\b' + esc(t) + '\\\\b', 'i').test(q);\n    }\n  });\n})() }}",
-              "rightValue": "",
+              "id": "c1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
               "operator": {
                 "type": "boolean",
                 "operation": "true",
@@ -241,252 +443,368 @@
           "combinator": "and"
         },
         "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        14944,
-        10768
-      ],
-      "id": "9e21b278-83bd-4127-86d4-5689d3cc1369",
-      "name": "Keyword Match?"
+      }
     },
     {
+      "id": "n-respond-generate",
+      "name": "Respond Generate",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2100,
+        300
+      ],
       "parameters": {
-        "sortFieldsUi": {
-          "sortField": [
-            {
-              "fieldName": "=data.globalSearchVolume",
-              "order": "descending"
-            }
-          ]
-        },
+        "respondWith": "firstIncomingItem",
         "options": {}
-      },
-      "type": "n8n-nodes-base.sort",
-      "typeVersion": 1,
-      "position": [
-        13904,
-        11152
-      ],
-      "id": "d280b76e-12d1-4519-b38e-1f213833d3df",
-      "name": "Sort"
+      }
     },
     {
-      "parameters": {},
-      "type": "n8n-nodes-base.limit",
-      "typeVersion": 1,
+      "id": "n-respond-ai-error",
+      "name": "Respond AI Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
       "position": [
-        14112,
-        11152
+        2100,
+        500
       ],
-      "id": "4031628d-0ede-4da3-9fe8-53db6ce0ca4e",
-      "name": "Limit"
-    },
-    {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "supermat-trigger",
-        "responseMode": "lastNode",
-        "options": {}
-      },
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', message: $json.error, requestId: $json.requestId || null }) }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode || 400 }}"
+        }
+      }
+    },
+    {
+      "id": "n-webhook-publish",
+      "name": "Webhook Publish",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [
-        14176,
-        10624
-      ],
-      "id": "d2d6b956-e3e9-40ef-8401-b7b890ad1aa5",
-      "name": "Webhook"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Extract input JSON (which is the output from AI Agent / Basic LLM Chain)\nconst aiInput = $json;\n\n// Get Client Info from Webhook safely without relying on item pairing\nlet clientInfo = {};\ntry {\n  const webhookData = $('Webhook').first().json;\n  clientInfo = webhookData.body || webhookData;\n} catch (err) {\n  clientInfo = aiInput.body || aiInput;\n}\n\n// Safe parse JSON from AI response\nfunction safeParseJson(str) {\n  if (!str) return null;\n  if (typeof str === 'object') return str;\n  try {\n    const clean = str.replace(/```json/gi,\"\").replace(/```/g,\"\").trim();\n    const start = clean.indexOf('{');\n    const end = clean.lastIndexOf('}');\n    if (start === -1 || end === -1) {\n      return JSON.parse(clean);\n    }\n    return JSON.parse(clean.slice(start, end + 1));\n  } catch (e) {\n    try {\n      return JSON.parse(str);\n    } catch (err2) {\n      return null;\n    }\n  }\n}\n\nconst text = aiInput.text || aiInput.output || '';\nconst parsed = safeParseJson(text) || safeParseJson(aiInput);\n\nconst kw = clientInfo.keyword || clientInfo.query || \"Keyword Utama\";\n\n// Get search metrics safely without relying on item pairing\nlet searchVolume = 0;\nlet difficulty = 0;\ntry {\n  const svNode = $('Riset SVolume').first().json;\n  searchVolume = svNode.data?.globalSearchVolume || 0;\n  difficulty = svNode.data?.difficulty || 0;\n} catch (e) {\n  // Riset SVolume was not executed or failed\n}\n\nreturn [{\n  json: {\n    clientName: clientInfo.Client_Name || \"Supermat Client\",\n    projectId: clientInfo.projectId || clientInfo.sanityProjectId || \"mwwvwgiw\",\n    studioUrl: clientInfo.studioUrl || \"\",\n    telegramChatId: clientInfo.Telegram_Chat_ID || \"\",\n    cmsType: (clientInfo.CMS_Type || \"sanity\").toLowerCase().trim(),\n    article: {\n      title: parsed?.title || \"Draft Article\",\n      slug: parsed?.slug || \"draft-article\",\n      excerpt: parsed?.excerpt || \"\",\n      bodyMarkdown: parsed?.body || \"\",\n      keywords: [kw],\n      primaryKeyword: kw,\n      searchVolume: searchVolume,\n      difficulty: difficulty\n    }\n  }\n}];"
-      },
-      "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        14512,
-        11152
+        -460,
+        900
       ],
-      "id": "77c4c7ac-e795-4e78-b54e-4efc93e2d7f6",
-      "name": "Unified Post Payload Generator"
-    },
-    {
-      "parameters": {
-        "dataType": "string",
-        "value1": "={{ $json.cmsType }}",
-        "rules": {
-          "rules": [
-            {
-              "value2": "sanity"
-            },
-            {
-              "value2": "wordpress",
-              "output": 1
-            },
-            {
-              "value2": "wix",
-              "output": 2
-            }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 1,
-      "position": [
-        14720,
-        11152
-      ],
-      "id": "166508f9-4700-4b28-b5d0-2d3fc861a6fd",
-      "name": "CMS Router"
-    },
-    {
-      "parameters": {
-        "workflowId": "k7yaVHeCMgjWpWSn",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [
-        14912,
-        11024
-      ],
-      "id": "6c0058e2-8f4d-4cfe-b492-8dcd4b3b8e23",
-      "name": "Adapter: Sanity Publisher"
-    },
-    {
-      "parameters": {
-        "workflowId": "lHWaDdAa0XC4OvH6",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [
-        14912,
-        11152
-      ],
-      "id": "ee405636-1e0b-4987-b297-890ac0982301",
-      "name": "Adapter: WordPress Publisher"
-    },
-    {
-      "parameters": {
-        "workflowId": "94j1ym4BEZ1SEhzS",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [
-        14912,
-        11280
-      ],
-      "id": "f7b8e664-29da-484a-8b2d-731955d79702",
-      "name": "Adapter: Wix Publisher"
-    },
-    {
-      "parameters": {
-        "workflowId": "h46kqvMFyFbC6YKR",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [
-        15168,
-        11152
-      ],
-      "id": "2c91341f-9e2b-4aab-86e1-617879d60db2",
-      "name": "Execute Telegram Notifier"
-    },
-    {
+      "webhookId": "12f6c704-5949-4562-b019-0697ff10a265",
       "parameters": {
         "httpMethod": "POST",
         "path": "supermat-publish",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
-      },
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [
-        14512,
-        11328
-      ],
-      "id": "9737331b-94b1-4bb2-b9ae-11a7a8987530",
-      "name": "Publish Webhook"
+      }
     },
     {
-      "parameters": {
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3,
-      "position": [
-        14080,
-        10832
-      ],
-      "id": "a9a481b2-f1cf-48c6-bdf3-cad385cfd1c1",
-      "name": "Prep Fallback"
-    },
-    {
-      "parameters": {
-        "mode": "chooseBranch"
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 2.1,
-      "position": [
-        14192,
-        10976
-      ],
-      "id": "46f7ce37-5b2a-4ce3-b2c2-815859074ac9",
-      "name": "Resolve Target"
-    },
-    {
-      "parameters": {
-        "promptType": "define",
-        "text": "=Tulis satu artikel blog SEO lengkap dengan struktur SILO untuk keyword utama berikut: {{  $json.data.keyword }}.\n\nManfaatkan data riset ini sebagai konteks (jangan ditulis ulang mentah di artikel): search volume {{  $json.data.searchVolume }}, keyword difficulty {{  $json.data.difficulty }}, traffic potential {{  $json.data.trafficPotential }}.\n\nPastikan artikel mengikuti seluruh aturan PERAN, TONE, STRUKTUR, dan SEO yang sudah ditetapkan. Sertakan judul yang menarik, paragraf pembuka ber-hook, heading yang logis, dan penutup dengan soft CTA sesuai brand {{ $('Webhook').item.json.body.Client_Name }}\n\nFORMAT OUTPUT (WAJIB):\nKembalikan hasil dalam bentuk JSON dengan tepat 4 field berikut:\n- \"title\": judul artikel yang menarik (tanpa tanda markdown).\n- \"slug\": versi slug dari judul (huruf kecil, dipisah tanda hubung).\n- \"excerpt\": ringkasan singkat 1-2 kalimat.\n- \"body\": isi lengkap artikel dalam format markdown (gunakan heading ##, paragraf, dan list bila perlu).\nJangan tulis judul di dalam body. Jangan tambahkan teks apa pun di luar JSON.",
-        "options": {
-          "systemMessage": "=RISET DATA (WAJIB SEBELUM MENULIS)\nGunakan parameter pencarian lokasi {{ $('Riset Google Trends').item.json.search_parameters.geo }} dan bahasa {{ $('Riset Google Trends').item.json.search_parameters.hl }}, dan utamakan hanya sumber yang valid dan kredibel: situs resmi/produk, dokumentasi resmi, media/publikasi ternama, lembaga riset, jurnal, atau data statistik resmi. Hindari forum anonim, konten spam, atau sumber yang tidak jelas kredibilitasnya. Bila perlu, sebutkan secara wajar sumber/rujukan di dalam artikel.\nSebelum menulis artikel, kamu WAJIB memanggil tool \"Google Search Riset\" untuk mencari fakta, data, statistik, fitur produk, dan informasi terkini tentang keyword/topik artikel. Lakukan 1-3 kali pencarian bila perlu. Dasarkan SEMUA klaim faktual, angka, dan detail pada hasil pencarian Google tersebut. JANGAN mengarang fakta, statistik, fitur, harga, atau klaim apa pun yang tidak didukung hasil riset. Jika informasi tidak ditemukan, tulis secara umum dan jangan membuat data palsu.\n\nPERAN\nKamu adalah SEO content strategist dan copywriter profesional untuk brand \"{{ $('Webhook').item.json.body.Client_Name }}\". Tugasmu menulis artikel blog yang SEO-friendly, terasa ditulis manusia, dan enak dibaca — bukan terdengar seperti AI.\n\nTARGET PEMBACA\nPembaca yang ingin membaca terkait topik {{ $('Webhook').item.json.body.keyword }} di Indonesia. Mereka sibuk, suka konten ringkas dan langsung to-the-point yang bisa dibaca ~5 menit.\n\nTONE & GAYA\n- Santai tapi profesional. Sapa pembaca dengan \"kamu\", dan posisikan brand sebagai \"kita\".\n- Bahasa Indonesia natural sehari-hari. Biarkan istilah marketing umum tetap dalam Bahasa Inggris (engagement, conversion, customer journey, awareness, funnel, hard selling, dll) — jangan diterjemahkan paksa.\n- Variasikan panjang kalimat. Sesekali pakai kalimat pendek dan tegas untuk penekanan. Hindari paragraf panjang yang monoton (maksimal 2-4 kalimat per paragraf).\n- Gunakan konektor percakapan yang luwes seperti \"Jadi,\", \"Nah,\", \"Artinya,\", \"Masalahnya,\" — tapi jangan berlebihan.\n- Boleh pakai analogi, contoh konkret, dan poin bernomor/bullet bila memang membantu keterbacaan.\n\nSTRUKTUR ARTIKEL\n- Paragraf pembuka: pancing dengan menohok asumsi umum atau menyebut masalah nyata yang dialami pembaca, lalu posisikan topik sebagai solusi. Jangan basa-basi.\n- Isi: bagi menjadi beberapa sub-bagian dengan heading (H2/H3) yang jelas dan logis, mengikuti search intent keyword.\n- Penutup: rangkum kunci utama dalam 2-4 poin, akhiri dengan satu kalimat punchline yang menempel, lalu soft CTA yang relevan ke layanan 3our (jangan hard selling).\n\nATURAN SEO\n- Tempatkan keyword utama secara natural di judul, paragraf pembuka, dan beberapa heading — JANGAN keyword stuffing.\n- Gunakan kata turunan/sinonim/LSI agar terasa alami.\n- Pastikan paragraf pembuka langsung menjawab maksud pencarian pembaca.\n- Sarankan internal linking bila relevan.\n\nHAL YANG WAJIB DIHINDARI (agar tidak terdengar seperti AI)\n- Frasa klise: \"di era digital yang serba cepat ini\", \"tak dapat dipungkiri\", \"mari kita selami/bahas lebih dalam\", \"dalam dunia yang terus berkembang\".\n- Transisi kaku berlebihan: \"selain itu\", \"lebih lanjut\", \"dengan demikian\", \"oleh karena itu\" yang dipakai bertubi-tubi.\n- Kalimat pembuka generik berupa definisi (\"X adalah ...\") — mulai dengan hook, bukan kamus.\n- Kesimpulan yang mengulang isi secara kaku. Penutup harus terasa seperti obrolan, bukan ringkasan robotik.\n- Nada terlalu formal, bertele-tele, atau over-promising.\n\nPANJANG\nTargetkan artikel ringkas dan padat (sekitar 600-900 kata), bisa dibaca dalam ~5 menit. Kualitas dan keterbacaan di atas kuantitas.\n\nFORMAT OUTPUT (WAJIB DIPATUHI)\nKembalikan HANYA satu objek JSON valid yang sesuai skema persis ini, tanpa teks lain:\n{\"title\": string, \"slug\": string, \"excerpt\": string, \"body\": string}\nAturan keras:\n- JANGAN bungkus dengan code fence (tanpa ```json atau ```), tanpa markdown, tanpa komentar, tanpa kalimat pembuka/penutup.\n- Output harus berupa JSON tunggal yang bisa langsung di-parse JSON.parse(). Tidak boleh kosong, tidak boleh array kosong, tidak boleh null.\n- Semua keempat field (title, slug, excerpt, body) WAJIB terisi dengan string non-kosong.\n- slug: huruf kecil, kata dipisah tanda hubung, tanpa spasi/simbol.\n- body: berisi isi lengkap artikel (boleh markdown di dalam nilai string body), di-escape dengan benar agar JSON tetap valid.\n- Jika ragu, tetap kembalikan JSON valid sesuai skema; jangan pernah menjelaskan atau meminta klarifikasi.\n\nRISET DATA (WAJIB SEBELUM MENULIS)\nGunakan parameter pencarian lokasi {{ $('Riset Google Trends').item.json.search_parameters.geo }} dan bahasa {{ $('Riset Google Trends').item.json.search_parameters.hl }}, dan utamakan hanya sumber yang valid dan kredibel: situs resmi/produk, dokumentasi resmi, media/publikasi ternama, lembaga riset, jurnal, atau data statistik resmi. Hindari forum anonim, konten spam, atau sumber yang tidak jelas kredibilitasnya. Bila perlu, sebutkan secara wajar sumber/rujukan di dalam artikel.\nSebelum menulis artikel, kamu WAJIB memanggil tool \"Google Search Riset\" untuk mencari fakta, data, statistik, fitur produk, dan informasi terkini tentang keyword/topik artikel. Lakukan 1-3 kali pencarian bila perlu. Dasarkan SEMUA klaim faktual, angka, dan detail pada hasil pencarian Google tersebut. JANGAN mengarang fakta, statistik, fitur, harga, atau klaim apa pun yang tidak didukung hasil riset. Jika informasi tidak ditemukan, tulis secara umum dan jangan membuat data palsu.\n\nPERAN\nKamu adalah SEO content strategist dan copywriter profesional untuk brand \"{{ $('Webhook').item.json.body.Client_Name }}\". Tugasmu menulis artikel blog yang SEO-friendly, terasa ditulis manusia, dan enak dibaca — bukan terdengar seperti AI.\n\nTARGET PEMBACA\nPembaca yang ingin membaca terkait topik {{ $('Webhook').item.json.body.keyword }} di Indonesia. Mereka sibuk, suka konten ringkas dan langsung to-the-point yang bisa dibaca ~5 menit.\n\nTONE & GAYA\n- Santai tapi profesional. Sapa pembaca dengan \"kamu\", dan posisikan brand sebagai \"kita\".\n- Bahasa Indonesia natural sehari-hari. Biarkan istilah marketing umum tetap dalam Bahasa Inggris (engagement, conversion, customer journey, awareness, funnel, hard selling, dll) — jangan diterjemahkan paksa.\n- Variasikan panjang kalimat. Sesekali pakai kalimat pendek dan tegas untuk penekanan. Hindari paragraf panjang yang monoton (maksimal 2-4 kalimat per paragraf).\n- Gunakan konektor percakapan yang luwes seperti \"Jadi,\", \"Nah,\", \"Artinya,\", \"Masalahnya,\" — tapi jangan berlebihan.\n- Boleh pakai analogi, contoh konkret, dan poin bernomor/bullet bila memang membantu keterbacaan.\n\nSTRUKTUR ARTIKEL\n- Paragraf pembuka: pancing dengan menohok asumsi umum atau menyebut masalah nyata yang dialami pembaca, lalu posisikan topik sebagai solusi. Jangan basa-basi.\n- Isi: bagi menjadi beberapa sub-bagian dengan heading (H2/H3) yang jelas dan logis, mengikuti search intent keyword.\n- Penutup: rangkum kunci utama dalam 2-4 poin, akhiri dengan satu kalimat punchline yang menempel, lalu soft CTA yang relevan ke layanan 3our (jangan hard selling).\n\nATURAN SEO\n- Tempatkan keyword utama secara natural di judul, paragraf pembuka, dan beberapa heading — JANGAN keyword stuffing.\n- Gunakan kata turunan/sinonim/LSI agar terasa alami.\n- Pastikan paragraf pembuka langsung menjawab maksud pencarian pembaca.\n- Sarankan internal linking bila relevan.\n\nHAL YANG WAJIB DIHINDARI (agar tidak terdengar seperti AI)\n- Frasa klise: \"di era digital yang serba cepat ini\", \"tak dapat dipungkiri\", \"mari kita selami/bahas lebih dalam\", \"dalam dunia yang terus berkembang\".\n- Transisi kaku berlebihan: \"selain itu\", \"lebih lanjut\", \"dengan demikian\", \"oleh karena itu\" yang dipakai bertubi-tubi.\n- Kalimat pembuka generik berupa definisi (\"X adalah ...\") — mulai dengan hook, bukan kamus.\n- Kesimpulan yang mengulang isi secara kaku. Penutup harus terasa seperti obrolan, bukan ringkasan robotik.\n- Nada terlalu formal, bertele-tele, or over-promising.\n\nPANJANG\nTargetkan artikel ringkas dan padat (sekitar 600-900 kata), bisa dibaca dalam ~5 menit. Kualitas dan keterbacaan di atas kuantitas.\n\nFORMAT OUTPUT (WAJIB DIPATUHI)\nKembalikan HANYA satu objek JSON valid yang sesuai skema persis ini, tanpa teks lain:\n{\"title\": string, \"slug\": string, \"excerpt\": string, \"body\": string}\nAturan keras:\n- JANGAN bungkus dengan code fence (tanpa ```json atau ```), tanpa markdown, tanpa komentar, tanpa kalimat pembuka/penutup.\n- Output harus berupa JSON tunggal yang bisa langsung di-parse JSON.parse(). Tidak boleh kosong, tidak boleh array kosong, tidak boleh null.\n- Semua keempat field (title, slug, excerpt, body) WAJIB terisi dengan string non-kosong.\n- slug: huruf kecil, kata dipisah tanda hubung, tanpa spasi/simbol.\n- body: berisi isi lengkap artikel (boleh markdown di dalam nilai string body), di-escape dengan benar agar JSON tetap valid.\n- Jika ragu, tetap kembalikan JSON valid sesuai skema; jangan pernah menjelaskan atau meminta klarifikasi."
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 3.1,
-      "position": [
-        14256,
-        11152
-      ],
-      "id": "ce19ddd1-8646-45be-b285-8024c8e8e9cc",
-      "name": "AI Agent"
-    },
-    {
-      "parameters": {
-        "jsCode": "const body = $json.body || {};\nreturn [{\n  json: {\n    clientName: body.clientName || \"Supermat Client\",\n    projectId: body.projectId || \"mwwvwgiw\",\n    telegramChatId: body.telegramChatId || \"\",\n    cmsType: (body.cmsType || \"sanity\").toLowerCase().trim(),\n    article: body.article || null,\n    authToken: body.authToken || \"\",\n    draftDocId: body.draftDocId || \"\" // <--- PASTIKAN BARIS INI ADA\n  }\n}];\n"
-      },
+      "id": "n-auth-normalize-publish-",
+      "name": "Auth & Normalize (Publish)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        14720,
-        11328
+        -240,
+        900
       ],
-      "id": "64d690dc-e289-4cf7-9ff1-598865dbabef",
-      "name": "Normalize publish payload"
+      "parameters": {
+        "jsCode": "// 3Our Supermat API — validasi API key & normalisasi input untuk endpoint PUBLISH\n// Body: { cmsType: 'wordpress'|'wix'|'sanity', action: 'draft'|'publish', cms: {...kredensial user...}, article: {...}, postId?: '' }\nconst DEFAULT_KEYS = ['SPM-3OUR-LIVE-7Q4K-2026'];\nlet keys = DEFAULT_KEYS;\ntry { const e = String($env.SUPERMAT_API_KEYS || '').trim(); if (e) keys = e.split(',').map(s => s.trim()).filter(Boolean); } catch (err) {}\n\nconst headers = $json.headers || {};\nconst body = $json.body || {};\nconst bearer = String(headers.authorization || '').replace(/^Bearer\\s+/i, '').trim();\nconst key = String(headers['x-supermat-key'] || headers['x-api-key'] || bearer || body.apiKey || '').trim();\nconst ok = !!key && keys.includes(key);\n\nconst cmsType = String(body.cmsType || body.CMS_Type || '').toLowerCase().trim();\nconst action = String(body.action || '').toLowerCase() === 'publish' ? 'publish' : 'draft';\nconst cmsIn = body.cms || {};\nconst str = v => String(v ?? '').trim();\nconst cms = {\n  wordpress: {\n    url: str((cmsIn.wordpress || {}).url || body.wpUrl).replace(/\\/+$/, ''),\n    user: str((cmsIn.wordpress || {}).user || body.wpUser),\n    appPassword: str((cmsIn.wordpress || {}).appPassword || body.wpPass),\n  },\n  wix: {\n    siteId: str((cmsIn.wix || {}).siteId || body.wixSiteId),\n    apiKey: str((cmsIn.wix || {}).apiKey || body.wixKey),\n    memberId: str((cmsIn.wix || {}).memberId || body.wixMemberId),\n  },\n  sanity: {\n    projectId: str((cmsIn.sanity || {}).projectId || body.projectId),\n    dataset: str((cmsIn.sanity || {}).dataset || body.dataset) || 'production',\n    token: str((cmsIn.sanity || {}).token || body.authToken),\n    studioUrl: str((cmsIn.sanity || {}).studioUrl || body.studioUrl),\n  },\n};\nconst article = body.article && typeof body.article === 'object' ? body.article : null;\nconst postId = str(body.postId || body.draftDocId || body.draftPostId);\n\nlet statusCode = 200, error = '';\nif (!ok) { statusCode = 401; error = 'API key tidak valid. Kirim header X-Supermat-Key.'; }\nelse if (!['wordpress', 'wix', 'sanity'].includes(cmsType)) { statusCode = 400; error = 'cmsType harus wordpress, wix, atau sanity.'; }\nelse if (!article && !postId) { statusCode = 400; error = 'Field \"article\" wajib diisi (atau postId untuk publish draf yang sudah ada).'; }\nelse if (article && (!str(article.title) || !str(article.bodyMarkdown || article.body))) { statusCode = 400; error = 'article.title dan article.bodyMarkdown wajib diisi.'; }\nelse if (cmsType === 'wordpress' && (!cms.wordpress.url || !cms.wordpress.user || !cms.wordpress.appPassword)) { statusCode = 400; error = 'Kredensial WordPress belum lengkap (url, user, appPassword).'; }\nelse if (cmsType === 'wix' && (!cms.wix.siteId || !cms.wix.apiKey)) { statusCode = 400; error = 'Kredensial Wix belum lengkap (siteId, apiKey).'; }\nelse if (cmsType === 'sanity' && (!cms.sanity.projectId || !cms.sanity.token)) { statusCode = 400; error = 'Kredensial Sanity belum lengkap (projectId, token).'; }\nif (cms.wordpress.url && !/^https?:\\/\\//i.test(cms.wordpress.url)) cms.wordpress.url = 'https://' + cms.wordpress.url;\n\nreturn [{ json: {\n  ok: statusCode === 200, statusCode, error,\n  cmsType, action, cms, postId,\n  article: article ? Object.assign({}, article, { bodyMarkdown: str(article.bodyMarkdown || article.body) }) : null,\n  clientName: str(body.clientName || body.Client_Name || 'Brand Anda'),\n  // kompatibilitas adapter Sanity lama\n  projectId: cms.sanity.projectId, authToken: cms.sanity.token, draftDocId: cmsType === 'sanity' ? postId : '',\n  telegramChatId: '',\n  requestId: str(body.requestId) || ('pub_' + Date.now().toString(36)),\n} }];\n"
+      }
+    },
+    {
+      "id": "n-auth-ok-publish-",
+      "name": "Auth OK (Publish)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -20,
+        900
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n-respond-error-publish-",
+      "name": "Respond Error (Publish)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        200,
+        1100
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', message: $json.error, requestId: $json.requestId || null }) }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode || 400 }}"
+        }
+      }
+    },
+    {
+      "id": "n-cms-router",
+      "name": "CMS Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        200,
+        900
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r1",
+                    "leftValue": "={{ $json.cmsType }}",
+                    "rightValue": "wordpress",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "wordpress"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r2",
+                    "leftValue": "={{ $json.cmsType }}",
+                    "rightValue": "wix",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "wix"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r3",
+                    "leftValue": "={{ $json.cmsType }}",
+                    "rightValue": "sanity",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "sanity"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      }
+    },
+    {
+      "id": "n-adapter-wp",
+      "name": "Adapter: WordPress",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        480,
+        740
+      ],
+      "parameters": {
+        "workflowId": "XokXcBPuDOlIexss",
+        "options": {}
+      }
+    },
+    {
+      "id": "n-adapter-wix",
+      "name": "Adapter: Wix",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        480,
+        900
+      ],
+      "parameters": {
+        "workflowId": "54QOd6HkD0duCqGq",
+        "options": {}
+      }
+    },
+    {
+      "id": "n-adapter-sanity",
+      "name": "Adapter: Sanity (legacy)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        480,
+        1060
+      ],
+      "parameters": {
+        "workflowId": "yRYqxg0wtw0Q0C9t",
+        "options": {}
+      }
+    },
+    {
+      "id": "n-respond-cms-tidak-didukung",
+      "name": "Respond CMS Tidak Didukung",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        1220
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', message: 'cmsType tidak didukung: ' + $json.cmsType }) }}",
+        "options": {
+          "responseCode": "400"
+        }
+      }
+    },
+    {
+      "id": "n-rapikan-hasil-publish",
+      "name": "Rapikan Hasil Publish",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        900
+      ],
+      "parameters": {
+        "jsCode": "// Samakan format hasil adapter + tentukan HTTP code\nconst r = $input.first().json || {};\nconst ok = r.status === 'ok' || r.status === 'success';\nreturn [{ json: {\n  status: ok ? 'ok' : 'error',\n  statusCode: ok ? 200 : (r.httpStatus && r.httpStatus >= 400 && r.httpStatus < 500 ? 400 : 502),\n  cmsType: r.cmsType || $('Auth & Normalize (Publish)').first().json.cmsType,\n  action: r.action || $('Auth & Normalize (Publish)').first().json.action,\n  postId: r.postId || r.draftDocId || '',\n  postStatus: r.postStatus || (ok ? ($('Auth & Normalize (Publish)').first().json.action === 'publish' ? 'publish' : 'draft') : ''),\n  draftEditUrl: r.draftEditUrl || '',\n  publicUrl: r.publicUrl || '',\n  previewUrl: r.previewUrl || '',\n  title: r.title || '',\n  message: r.message || (ok ? 'Berhasil.' : 'Gagal mengirim ke CMS.'),\n  requestId: r.requestId || $('Auth & Normalize (Publish)').first().json.requestId,\n} }];"
+      }
+    },
+    {
+      "id": "n-respond-publish",
+      "name": "Respond Publish",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        900
+      ],
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      }
     }
   ],
   "connections": {
-    "Riset Google Trends": {
+    "Webhook Generate": {
       "main": [
         [
           {
-            "node": "Rising Topic",
+            "node": "Auth & Normalize",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Rising Topic": {
+    "Auth & Normalize": {
       "main": [
         [
           {
-            "node": "Keyword Match?",
+            "node": "Auth OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth OK?": {
+      "main": [
+        [
+          {
+            "node": "Riset Google Trends",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Riset Google Trends": {
+      "main": [
+        [
+          {
+            "node": "Riset Autocomplete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Riset Autocomplete": {
+      "main": [
+        [
+          {
+            "node": "Pilih Kandidat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pilih Kandidat": {
+      "main": [
+        [
+          {
+            "node": "Riset SVolume",
             "type": "main",
             "index": 0
           }
@@ -497,32 +815,181 @@
       "main": [
         [
           {
-            "node": "If Volume Validation",
+            "node": "Tentukan Target",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "If Volume Validation": {
+    "Tentukan Target": {
       "main": [
         [
           {
-            "node": "Sort",
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Susun Artikel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Susun Artikel": {
+      "main": [
+        [
+          {
+            "node": "Artikel OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Artikel OK?": {
+      "main": [
+        [
+          {
+            "node": "Respond Generate",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Prep Fallback",
+            "node": "Respond AI Error",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Create Article": {
+    "Webhook Publish": {
+      "main": [
+        [
+          {
+            "node": "Auth & Normalize (Publish)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth & Normalize (Publish)": {
+      "main": [
+        [
+          {
+            "node": "Auth OK (Publish)?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth OK (Publish)?": {
+      "main": [
+        [
+          {
+            "node": "CMS Router",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error (Publish)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CMS Router": {
+      "main": [
+        [
+          {
+            "node": "Adapter: WordPress",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Adapter: Wix",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Adapter: Sanity (legacy)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond CMS Tidak Didukung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adapter: WordPress": {
+      "main": [
+        [
+          {
+            "node": "Rapikan Hasil Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adapter: Wix": {
+      "main": [
+        [
+          {
+            "node": "Rapikan Hasil Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adapter: Sanity (legacy)": {
+      "main": [
+        [
+          {
+            "node": "Rapikan Hasil Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rapikan Hasil Publish": {
+      "main": [
+        [
+          {
+            "node": "Respond Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Writer": {
       "ai_languageModel": [
         [
           {
@@ -543,179 +1010,10 @@
           }
         ]
       ]
-    },
-    "Keyword Match?": {
-      "main": [
-        [
-          {
-            "node": "Riset SVolume",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Prep Fallback",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Sort": {
-      "main": [
-        [
-          {
-            "node": "Limit",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Limit": {
-      "main": [
-        [
-          {
-            "node": "Resolve Target",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Riset Google Trends",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Unified Post Payload Generator": {
-      "main": [
-        [
-          {
-            "node": "CMS Router",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "CMS Router": {
-      "main": [
-        [
-          {
-            "node": "Adapter: Sanity Publisher",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Adapter: WordPress Publisher",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Adapter: Wix Publisher",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Adapter: Sanity Publisher": {
-      "main": [
-        []
-      ]
-    },
-    "Adapter: WordPress Publisher": {
-      "main": [
-        [
-          {
-            "node": "Execute Telegram Notifier",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Adapter: Wix Publisher": {
-      "main": [
-        [
-          {
-            "node": "Execute Telegram Notifier",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Publish Webhook": {
-      "main": [
-        [
-          {
-            "node": "Normalize publish payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Prep Fallback": {
-      "main": [
-        [
-          {
-            "node": "Resolve Target",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Resolve Target": {
-      "main": [
-        [
-          {
-            "node": "AI Agent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "AI Agent": {
-      "main": [
-        [
-          {
-            "node": "Unified Post Payload Generator",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Normalize publish payload": {
-      "main": [
-        [
-          {
-            "node": "CMS Router",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
-  "pinData": {},
-  "meta": {
-    "instanceId": "b28f851de9172bac92a701ac54bd1ae2e8717eb34f542e6ff87ca809ae544e5f"
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
   }
 }

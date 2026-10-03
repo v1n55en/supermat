@@ -1,0 +1,479 @@
+{
+  "name": "Supermat Adapter: Wix Blog",
+  "nodes": [
+    {
+      "id": "st-sticky-wix",
+      "name": "Sticky Wix",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        60
+      ],
+      "parameters": {
+        "width": 2200,
+        "height": 700,
+        "color": 3,
+        "content": "## 🟪 Adapter Wix Blog (REST v3, kredensial user)\nInput dari Main: `{ cms:{wix:{siteId, apiKey, memberId?}}, article, action, postId? }`. Header: `Authorization: <API key akun Wix>`, `wix-site-id`.\n**Siapkan Wix** ubah markdown → Ricos rich content. **Cek Posts/Members** mencari `memberId` penulis (wajib di Wix: dari post terakhir, lalu Members API, atau diisi user). Tanpa `postId` → **Buat Draft** `POST /blog/v3/draft-posts` (`publish:true` bila action publish). Dengan `postId` → **Publish Draft** `POST /blog/v3/draft-posts/{id}/publish`. **Ambil URL** `GET /blog/v3/posts/{id}?fieldsets=URL` untuk link publik. **Hasil Wix** → format standar Supermat.\nCatatan: API key dibuat di Wix Account → API Keys dengan izin *Blog* (+ *Members* opsional). Edit draf: `manage.wix.com/dashboard/{siteId}/blog/{draftId}/edit`."
+      }
+    },
+    {
+      "id": "n-wix-trigger",
+      "name": "Trigger dari Main",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -500,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "n-siapkan-wix",
+      "name": "Siapkan Wix",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -280,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// Adapter Wix Blog — siapkan header & konten Ricos dari kredensial user (API key + site id)\nconst IN = $input.first().json;\nconst X = (IN.cms || {}).wix || {};\nconst A = IN.article || {};\nconst action = IN.action === 'publish' ? 'publish' : 'draft';\nconst postId = String(IN.postId || '').trim();\n\n// ===== Markdown mini-parser (dipakai adapter WordPress & Wix) =====\n// parseMarkdown(md) -> [{type:'heading',level,inlines}|{type:'paragraph',inlines}|{type:'list',ordered,items:[inlines]}|{type:'quote',inlines}]\n// inlines: [{text, bold, italic, code, href}]\nfunction parseInline(s) {\n  const out = []; const src = String(s || '');\n  const push = (t, m) => { if (t) out.push(Object.assign({ text: t }, m || {})); };\n  const re = /(\\*\\*([^*]+)\\*\\*|__([^_]+)__|\\*([^*\\n]+)\\*|_([^_\\n]+)_|`([^`]+)`|\\[([^\\]]+)\\]\\(([^)\\s]+)\\))/g;\n  let m; let last = 0;\n  while ((m = re.exec(src))) {\n    push(src.slice(last, m.index));\n    if (m[2] || m[3]) push(m[2] || m[3], { bold: true });\n    else if (m[4] || m[5]) push(m[4] || m[5], { italic: true });\n    else if (m[6]) push(m[6], { code: true });\n    else if (m[7]) push(m[7], { href: m[8] });\n    last = m.index + m[0].length;\n  }\n  push(src.slice(last));\n  return out;\n}\nfunction parseMarkdown(md) {\n  const lines = String(md || '').replace(/\\r/g, '').split('\\n');\n  const blocks = []; let para = []; let list = null;\n  const flushPara = () => { if (para.length) { blocks.push({ type: 'paragraph', inlines: parseInline(para.join(' ')) }); para = []; } };\n  const flushList = () => { if (list) { blocks.push(list); list = null; } };\n  for (const raw of lines) {\n    const t = raw.trim();\n    if (!t) { flushPara(); flushList(); continue; }\n    let m;\n    if ((m = t.match(/^(#{1,6})\\s+(.*)$/))) { flushPara(); flushList(); blocks.push({ type: 'heading', level: Math.min(Math.max(m[1].length, 2), 4), inlines: parseInline(m[2].replace(/\\s#+$/, '')) }); continue; }\n    if ((m = t.match(/^[-*+]\\s+(.*)$/))) { flushPara(); if (!list || list.ordered) { flushList(); list = { type: 'list', ordered: false, items: [] }; } list.items.push(parseInline(m[1])); continue; }\n    if ((m = t.match(/^\\d+[.)]\\s+(.*)$/))) { flushPara(); if (!list || !list.ordered) { flushList(); list = { type: 'list', ordered: true, items: [] }; } list.items.push(parseInline(m[1])); continue; }\n    if ((m = t.match(/^>\\s?(.*)$/))) { flushPara(); flushList(); blocks.push({ type: 'quote', inlines: parseInline(m[1]) }); continue; }\n    if (/^(-{3,}|\\*{3,})$/.test(t)) { flushPara(); flushList(); continue; }\n    flushList(); para.push(t);\n  }\n  flushPara(); flushList();\n  return blocks;\n}\nconst escHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nfunction inlinesToHtml(inl) {\n  return inl.map(x => { let h = escHtml(x.text); if (x.code) h = '<code>' + h + '</code>'; if (x.bold) h = '<strong>' + h + '</strong>'; if (x.italic) h = '<em>' + h + '</em>'; if (x.href) h = '<a href=\"' + escHtml(x.href) + '\" target=\"_blank\" rel=\"noopener\">' + h + '</a>'; return h; }).join('');\n}\nfunction markdownToHtml(md) {\n  return parseMarkdown(md).map(b => {\n    if (b.type === 'heading') return '<h' + b.level + '>' + inlinesToHtml(b.inlines) + '</h' + b.level + '>';\n    if (b.type === 'quote') return '<blockquote><p>' + inlinesToHtml(b.inlines) + '</p></blockquote>';\n    if (b.type === 'list') return (b.ordered ? '<ol>' : '<ul>') + b.items.map(it => '<li>' + inlinesToHtml(it) + '</li>').join('') + (b.ordered ? '</ol>' : '</ul>');\n    return '<p>' + inlinesToHtml(b.inlines) + '</p>';\n  }).join('\\n');\n}\n// Ricos (Wix rich content)\nfunction markdownToRicos(md) {\n  let seq = 0; const nid = () => 'n' + (++seq).toString(36) + Date.now().toString(36).slice(-4);\n  const textNode = x => { const dec = []; if (x.bold) dec.push({ type: 'BOLD', fontWeightValue: 700 }); if (x.italic) dec.push({ type: 'ITALIC', italicData: true }); if (x.href) dec.push({ type: 'LINK', linkData: { link: { url: x.href, target: 'BLANK' } } }); return { type: 'TEXT', id: '', nodes: [], textData: { text: x.text, decorations: dec } }; };\n  const paragraph = inl => ({ type: 'PARAGRAPH', id: nid(), nodes: inl.map(textNode), paragraphData: {} });\n  const nodes = [];\n  for (const b of parseMarkdown(md)) {\n    if (b.type === 'heading') nodes.push({ type: 'HEADING', id: nid(), nodes: b.inlines.map(textNode), headingData: { level: b.level } });\n    else if (b.type === 'quote') nodes.push({ type: 'BLOCKQUOTE', id: nid(), nodes: [paragraph(b.inlines)], blockquoteData: {} });\n    else if (b.type === 'list') nodes.push({ type: b.ordered ? 'ORDERED_LIST' : 'BULLETED_LIST', id: nid(), nodes: b.items.map(it => ({ type: 'LIST_ITEM', id: nid(), nodes: [paragraph(it)] })), [b.ordered ? 'orderedListData' : 'bulletedListData']: { indentation: 0 } });\n    else nodes.push(paragraph(b.inlines));\n  }\n  return { nodes, metadata: { version: 1 } };\n}\n\n\nconst headers = { Authorization: String(X.apiKey || ''), 'wix-site-id': String(X.siteId || ''), 'Content-Type': 'application/json' };\nlet draftPost = null;\nif (A.title) {\n  draftPost = {\n    title: String(A.title).slice(0, 200),\n    excerpt: String(A.excerpt || '').slice(0, 500),\n    richContent: markdownToRicos(A.bodyMarkdown || A.body || ''),\n    seoSlug: String(A.slug || '').trim() || undefined,\n  };\n}\nif (!draftPost && !postId) throw new Error('Tidak ada artikel maupun postId untuk diproses.');\n\nreturn [{ json: {\n  cmsType: 'wix', action, postId, siteId: String(X.siteId || ''), memberIdInput: String(X.memberId || ''),\n  headers, draftPost,\n  keyword: A.primaryKeyword || '', title: A.title || '', requestId: IN.requestId || '',\n} }];\n"
+      }
+    },
+    {
+      "id": "n-wix-cek-posts",
+      "name": "Wix: Cek Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        400
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.wixapis.com/blog/v3/posts?paging.limit=1&fieldsets=URL",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Siapkan Wix').first().json.headers.Authorization }}"
+            },
+            {
+              "name": "wix-site-id",
+              "value": "={{ $('Siapkan Wix').first().json.headers['wix-site-id'] }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 45000
+        }
+      }
+    },
+    {
+      "id": "n-wix-cek-members",
+      "name": "Wix: Cek Members",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        160,
+        400
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.wixapis.com/members/v1/members?paging.limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Siapkan Wix').first().json.headers.Authorization }}"
+            },
+            {
+              "name": "wix-site-id",
+              "value": "={{ $('Siapkan Wix').first().json.headers['wix-site-id'] }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 45000
+        }
+      }
+    },
+    {
+      "id": "n-tentukan-member",
+      "name": "Tentukan Member",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// Adapter Wix Blog — tentukan memberId (penulis) & susun request berikutnya\nconst P = $('Siapkan Wix').first().json;\nconst posts = $('Wix: Cek Posts').first().json || {};\nconst members = $input.first().json || {};\nconst bodyOf = r => { if (!r) return {}; if (r.body && typeof r.body === 'object') return r.body; if (typeof r.body === 'string') { try { return JSON.parse(r.body); } catch (e) { return {}; } } return r; };\nconst pb = bodyOf(posts), mb = bodyOf(members);\nconst pStatus = Number(posts.statusCode || 0), mStatus = Number(members.statusCode || 0);\n\nif (pStatus === 401 || pStatus === 403) {\n  return [{ json: { status: 'error', cmsType: 'wix', action: P.action, httpStatus: pStatus, message: 'Wix menolak API key / Site ID (' + pStatus + '). Pastikan API key dibuat di Wix Account > API Keys dengan izin Blog & Members, dan Site ID benar.', requestId: P.requestId } }];\n}\nif (pStatus >= 400) {\n  return [{ json: { status: 'error', cmsType: 'wix', action: P.action, httpStatus: pStatus, message: 'Wix Blog API error ' + pStatus + ': ' + (pb.message || JSON.stringify(pb).slice(0, 200)), requestId: P.requestId } }];\n}\n\nlet memberId = P.memberIdInput || '';\nif (!memberId && Array.isArray(pb.posts) && pb.posts[0] && pb.posts[0].memberId) memberId = pb.posts[0].memberId;\nif (!memberId && Array.isArray(mb.members) && mb.members[0] && mb.members[0].id) memberId = mb.members[0].id;\nif (!memberId && !P.postId) {\n  return [{ json: { status: 'error', cmsType: 'wix', action: P.action, httpStatus: mStatus, message: 'Tidak menemukan member/penulis di situs Wix (Blog belum punya post dan Members API tidak bisa diakses). Buat satu post dulu di Wix Blog atau beri izin \"Members\" pada API key.', requestId: P.requestId } }];\n}\n\nconst draftPost = P.draftPost ? Object.assign({}, P.draftPost, { memberId }) : null;\nreturn [{ json: {\n  status: 'prep', cmsType: 'wix', action: P.action, postId: P.postId, siteId: P.siteId, headers: P.headers, memberId,\n  createBody: draftPost ? { draftPost, publish: P.action === 'publish', fieldsets: ['URL'] } : null,\n  publishUrl: P.postId ? 'https://www.wixapis.com/blog/v3/draft-posts/' + P.postId + '/publish' : '',\n  title: P.title, requestId: P.requestId,\n} }];\n"
+      }
+    },
+    {
+      "id": "n-member-ok-",
+      "name": "Member OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        600,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.status === 'prep' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n-ada-postid-",
+      "name": "Ada postId?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        820,
+        320
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ !!$json.postId }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n-wix-publish-draft",
+      "name": "Wix: Publish Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        200
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.publishUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Siapkan Wix').first().json.headers.Authorization }}"
+            },
+            {
+              "name": "wix-site-id",
+              "value": "={{ $('Siapkan Wix').first().json.headers['wix-site-id'] }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 45000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({}) }}"
+      }
+    },
+    {
+      "id": "n-wix-buat-draft",
+      "name": "Wix: Buat Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        400
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.wixapis.com/blog/v3/draft-posts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Siapkan Wix').first().json.headers.Authorization }}"
+            },
+            {
+              "name": "wix-site-id",
+              "value": "={{ $('Siapkan Wix').first().json.headers['wix-site-id'] }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 45000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.createBody) }}"
+      }
+    },
+    {
+      "id": "n-wix-ambil-url",
+      "name": "Wix: Ambil URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1260,
+        320
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://www.wixapis.com/blog/v3/posts/' + (($json.body && ($json.body.postId || ($json.body.draftPost && $json.body.draftPost.id))) || $('Tentukan Member').first().json.postId) + '?fieldsets=URL' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Siapkan Wix').first().json.headers.Authorization }}"
+            },
+            {
+              "name": "wix-site-id",
+              "value": "={{ $('Siapkan Wix').first().json.headers['wix-site-id'] }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 45000
+        }
+      }
+    },
+    {
+      "id": "n-hasil-wix",
+      "name": "Hasil Wix",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// Adapter Wix Blog — rapikan hasil jadi format standar Supermat\nconst first = $input.first().json || {};\nif (first.status === 'error') return [{ json: first }]; // error dari tahap sebelumnya diteruskan\n\nconst M = $('Tentukan Member').first().json;\nconst bodyOf = r => { if (!r) return {}; if (r.body && typeof r.body === 'object') return r.body; if (typeof r.body === 'string') { try { return JSON.parse(r.body); } catch (e) { return { raw: r.body.slice(0, 300) }; } } return r; };\nconst get = n => { try { return $(n).first().json; } catch (e) { return null; } };\n\nconst created = get('Wix: Buat Draft');\nconst published = get('Wix: Publish Draft');\nconst urlRes = get('Wix: Ambil URL');\n\nlet httpStatus = 0, b = {};\nif (created) { httpStatus = Number(created.statusCode || 0); b = bodyOf(created); }\nelse if (published) { httpStatus = Number(published.statusCode || 0); b = bodyOf(published); }\n\nif (httpStatus >= 400 || (!created && !published)) {\n  const msg = b.message || (b.details && JSON.stringify(b.details).slice(0, 300)) || b.raw || ('HTTP ' + httpStatus);\n  return [{ json: { status: 'error', cmsType: 'wix', action: M.action, httpStatus, message: 'Wix Blog API gagal: ' + msg, requestId: M.requestId } }];\n}\n\nconst draftId = (b.draftPost && b.draftPost.id) || b.postId || M.postId || '';\nconst postId = b.postId || (b.post && b.post.id) || draftId;\nconst ub = bodyOf(urlRes);\nconst url = (ub.post && ub.post.url) || (b.post && b.post.url) || (b.draftPost && b.draftPost.url) || null;\nconst publicUrl = url && url.base ? String(url.base).replace(/\\/+$/, '') + String(url.path || '') : '';\nconst isPublished = M.action === 'publish' && httpStatus < 400;\n\nreturn [{ json: {\n  status: 'ok', cmsType: 'wix', action: M.action,\n  postId: String(draftId), postStatus: isPublished ? 'publish' : 'draft',\n  draftEditUrl: 'https://manage.wix.com/dashboard/' + M.siteId + '/blog/' + draftId + '/edit',\n  publicUrl: isPublished ? publicUrl : '',\n  title: (b.draftPost && b.draftPost.title) || M.title,\n  message: isPublished ? 'Artikel terbit di Wix Blog.' : 'Draf tersimpan di Wix Blog.',\n  requestId: M.requestId,\n} }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Trigger dari Main": {
+      "main": [
+        [
+          {
+            "node": "Siapkan Wix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Siapkan Wix": {
+      "main": [
+        [
+          {
+            "node": "Wix: Cek Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wix: Cek Posts": {
+      "main": [
+        [
+          {
+            "node": "Wix: Cek Members",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wix: Cek Members": {
+      "main": [
+        [
+          {
+            "node": "Tentukan Member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tentukan Member": {
+      "main": [
+        [
+          {
+            "node": "Member OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Member OK?": {
+      "main": [
+        [
+          {
+            "node": "Ada postId?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Hasil Wix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ada postId?": {
+      "main": [
+        [
+          {
+            "node": "Wix: Publish Draft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wix: Buat Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wix: Publish Draft": {
+      "main": [
+        [
+          {
+            "node": "Wix: Ambil URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wix: Buat Draft": {
+      "main": [
+        [
+          {
+            "node": "Wix: Ambil URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wix: Ambil URL": {
+      "main": [
+        [
+          {
+            "node": "Hasil Wix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

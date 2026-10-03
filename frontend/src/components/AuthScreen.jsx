@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ShieldCheck, Rocket, UserPlus, LogIn, ArrowRight } from 'lucide-react';
+import { api, setToken } from '../api';
 
 export default function AuthScreen({ onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -10,34 +11,23 @@ export default function AuthScreen({ onLoginSuccess }) {
   const [niche, setNiche] = useState('F&B');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
-    if (!email || !password) {
-      setError('Harap isi semua field wajib.');
-      return;
-    }
-    if (!isLogin && !brandName) {
-      setError('Harap isi nama brand bisnis Anda.');
-      return;
-    }
-
+    if (!email || !password) { setError('Harap isi semua field wajib.'); return; }
+    if (!isLogin && !brandName) { setError('Harap isi nama brand bisnis Anda.'); return; }
     setLoading(true);
-    // Simulate API delay
-    setTimeout(() => {
+    try {
+      const data = isLogin
+        ? await api('/api/auth/login', { method: 'POST', body: { email, password } })
+        : await api('/api/auth/register', { method: 'POST', body: { email, password, brandName, niche } });
+      setToken(data.token);
+      await onLoginSuccess(data.user);
+    } catch (err) {
+      setError(err.message || 'Gagal masuk. Coba lagi.');
+    } finally {
       setLoading(false);
-      const userProfile = {
-        email,
-        brandName: isLogin ? (email.split('@')[0].toUpperCase() + ' Brand') : brandName,
-        niche: isLogin ? 'F&B' : niche,
-        token: 'mock-session-jwt-token-12345'
-      };
-      
-      // Save session in localStorage
-      localStorage.setItem('supermat_user', JSON.stringify(userProfile));
-      onLoginSuccess(userProfile);
-    }, 1200);
+    }
   };
 
   return (
@@ -53,7 +43,7 @@ export default function AuthScreen({ onLoginSuccess }) {
           </div>
           <h1 style={styles.title}>Supermat Automation</h1>
           <p style={styles.subtitle}>
-            Platform Automasi Digital Marketing Multi-CMS & Niche Terpadu
+            SEO Article Automation by 3Our — riset keyword, tulis artikel AI, terbit ke WordPress / Wix kamu
           </p>
         </div>
 

@@ -1,96 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
 import KeywordManager from './components/KeywordManager';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import CmsSettings from './components/CmsSettings';
+import BillingPage from './components/BillingPage';
+import { api, getToken, setToken } from './api';
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('keywords'); // keywords, analytics, settings
-  const [runCount, setRunCount] = useState(0);
-  const [plan, setPlan] = useState('free'); // free, premium
+  const [me, setMe] = useState(null); // { user, plan, usage, cms }
+  const [booting, setBooting] = useState(true);
+  const [activeTab, setActiveTab] = useState('keywords'); // keywords | analytics | settings | billing
 
-  // Check if session exists in localStorage
-  useEffect(() => {
-    const session = localStorage.getItem('supermat_user');
-    if (session) {
-      setUser(JSON.parse(session));
-    }
-    
-    const count = localStorage.getItem('supermat_run_count');
-    if (count) {
-      setRunCount(parseInt(count, 10));
-    }
-
-    const storedPlan = localStorage.getItem('supermat_plan');
-    if (storedPlan) {
-      setPlan(storedPlan);
-    } else {
-      localStorage.setItem('supermat_plan', 'free');
-    }
+  const refreshMe = useCallback(async () => {
+    if (!getToken()) { setMe(null); return null; }
+    try { const data = await api('/api/me'); setMe(data); return data; }
+    catch { setToken(''); setMe(null); return null; }
   }, []);
 
-  const handleLoginSuccess = (profile) => {
-    setUser(profile);
-  };
+  useEffect(() => {
+    // bersihkan sisa sesi mock versi lama
+    ['supermat_user', 'supermat_plan', 'supermat_keywords', 'supermat_credentials', 'supermat_run_count'].forEach(k => { try { localStorage.removeItem(k); } catch { /* abaikan */ } });
+    refreshMe().finally(() => setBooting(false));
+    const onLogout = () => { setMe(null); setActiveTab('keywords'); };
+    window.addEventListener('supermat:logout', onLogout);
+    return () => window.removeEventListener('supermat:logout', onLogout);
+  }, [refreshMe]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('supermat_user');
-    setUser(null);
-    setActiveTab('keywords');
-  };
+  const handleLoginSuccess = async () => { setBooting(true); await refreshMe(); setBooting(false); };
+  const handleLogout = () => { setToken(''); setMe(null); setActiveTab('keywords'); };
 
-  const handlePlanChange = (newPlan) => {
-    setPlan(newPlan);
-    localStorage.setItem('supermat_plan', newPlan);
-  };
-
-  const handleArticleCreated = () => {
-    const nextCount = runCount + 1;
-    setRunCount(nextCount);
-    localStorage.setItem('supermat_run_count', nextCount.toString());
-  };
-
-  // Render AuthScreen if user session not active
-  if (!user) {
-    return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
+  if (booting) {
+    return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>Memuat Supermat…</div>;
   }
+  if (!me) return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
+
+  const user = me.user;
+  const plan = user.plan || 'free';
 
   return (
     <div className="app-container">
-      {/* Retractable Sidebar */}
-      <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        user={user} 
-        onLogout={handleLogout} 
-        plan={plan}
-        onPlanChange={handlePlanChange}
-      />
-
-      {/* Main Panel Router */}
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={handleLogout} plan={plan} usage={me.usage} />
       <main className="main-content">
-        {activeTab === 'keywords' && (
-          <KeywordManager 
-            user={user} 
-            onArticleCreated={handleArticleCreated} 
-            plan={plan}
-          />
-        )}
-        {activeTab === 'analytics' && (
-          <AnalyticsDashboard 
-            user={user} 
-            runCount={runCount} 
-          />
-        )}
-        {activeTab === 'settings' && (
-          <CmsSettings 
-            user={user} 
-            plan={plan}
-            onPlanChange={handlePlanChange}
-          />
-        )}
+        {activeTab === 'keywords' && <KeywordManager me={me} refreshMe={refreshMe} goTo={setActiveTab} />}
+        {activeTab === 'analytics' && <AnalyticsDashboard me={me} />}
+        {activeTab === 'settings' && <CmsSettings me={me} refreshMe={refreshMe} goTo={setActiveTab} />}
+        {activeTab === 'billing' && <BillingPage me={me} refreshMe={refreshMe} />}
       </main>
     </div>
   );

@@ -1,435 +1,95 @@
-import React, { useState } from 'react';
-import { TrendingUp, MousePointerClick, Eye, Percent, CheckCircle2, DollarSign, Share2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { FileText, CheckCircle2, Clock, TrendingUp, Search, AlertTriangle } from 'lucide-react';
+import { api, CMS_LABEL } from '../api';
 
-export default function AnalyticsDashboard({ user, runCount }) {
-  const [activeChart, setActiveChart] = useState('gsc'); // gsc, ads, social
+export default function AnalyticsDashboard({ me }) {
+  const user = me.user;
+  const [keywords, setKeywords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { api('/api/keywords').then(d => setKeywords(d.keywords)).catch(() => {}).finally(() => setLoading(false)); }, []);
 
-  // Mock data that escalates with runCount (simulating keyword automation impact)
-  const baseMultiplier = 1 + (runCount * 0.12);
-  
-  const gscData = [
-    { label: 'Senin', clicks: Math.round(120 * baseMultiplier), impressions: Math.round(1800 * baseMultiplier) },
-    { label: 'Selasa', clicks: Math.round(145 * baseMultiplier), impressions: Math.round(2100 * baseMultiplier) },
-    { label: 'Rabu', clicks: Math.round(190 * baseMultiplier), impressions: Math.round(2700 * baseMultiplier) },
-    { label: 'Kamis', clicks: Math.round(175 * baseMultiplier), impressions: Math.round(2400 * baseMultiplier) },
-    { label: 'Jumat', clicks: Math.round(220 * baseMultiplier), impressions: Math.round(3100 * baseMultiplier) },
-    { label: 'Sabtu', clicks: Math.round(260 * baseMultiplier), impressions: Math.round(3600 * baseMultiplier) },
-    { label: 'Minggu', clicks: Math.round(290 * baseMultiplier), impressions: Math.round(4200 * baseMultiplier) },
-  ];
+  const stats = useMemo(() => {
+    const total = keywords.length;
+    const written = keywords.filter(k => k.article).length;
+    const published = keywords.filter(k => k.status === 'Published').length;
+    const drafts = keywords.filter(k => k.status === 'Draft Created').length;
+    const review = keywords.filter(k => k.status === 'Review Ready').length;
+    const errors = keywords.filter(k => k.status === 'Error').length;
+    const words = keywords.reduce((s, k) => s + (k.article?.wordCount || 0), 0);
+    const volume = keywords.reduce((s, k) => s + (Number(k.volume) || 0), 0);
+    const byCms = {}; keywords.forEach(k => { byCms[k.cms] = (byCms[k.cms] || 0) + 1; });
+    // 8 minggu terakhir: artikel dibuat per minggu
+    const weeks = [...Array(8)].map((_, i) => { const d = new Date(); d.setDate(d.getDate() - (7 - i) * 7); return { label: d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }), count: 0, ts: d.getTime() }; });
+    keywords.forEach(k => { const t = k.lastRunAt ? new Date(k.lastRunAt).getTime() : null; if (!t) return; for (let i = weeks.length - 1; i >= 0; i--) { if (t >= weeks[i].ts) { weeks[i].count++; break; } } });
+    return { total, written, published, drafts, review, errors, words, volume, byCms, weeks };
+  }, [keywords]);
 
-  const adsData = [
-    { label: 'Meta', spend: Math.round(45 * baseMultiplier), leads: Math.round(12 * baseMultiplier) },
-    { label: 'Google', spend: Math.round(65 * baseMultiplier), leads: Math.round(18 * baseMultiplier) },
-    { label: 'TikTok', spend: Math.round(30 * baseMultiplier), leads: Math.round(8 * baseMultiplier) },
-  ];
-
-  const socialData = [
-    { label: 'IG Reach', value: Math.round(2400 * baseMultiplier) },
-    { label: 'FB Reach', value: Math.round(1200 * baseMultiplier) },
-    { label: 'IG Engage', value: Math.round(450 * baseMultiplier) },
-    { label: 'FB Engage', value: Math.round(180 * baseMultiplier) },
-  ];
-
-  // Calculate totals
-  const totalClicks = gscData.reduce((acc, curr) => acc + curr.clicks, 0);
-  const totalImpressions = gscData.reduce((acc, curr) => acc + curr.impressions, 0);
-  const avgCtr = ((totalClicks / totalImpressions) * 100).toFixed(2);
-  
-  const totalLeads = adsData.reduce((acc, curr) => acc + curr.leads, 0);
-  const totalSpend = adsData.reduce((acc, curr) => acc + curr.spend, 0);
-
-  // SVG Chart helpers
-  const maxImpressions = Math.max(...gscData.map(d => d.impressions));
-  const maxClicks = Math.max(...gscData.map(d => d.clicks));
+  const maxWeek = Math.max(1, ...stats.weeks.map(w => w.count));
+  const top = [...keywords].filter(k => k.volume).sort((a, b) => b.volume - a.volume).slice(0, 8);
+  const limit = me.usage?.limit || 0, used = me.usage?.runsThisMonth || 0;
 
   return (
     <div>
-      <div style={styles.header}>
-        <div>
-          <h1>Analitik & Performa Pemasaran</h1>
-          <p style={{ color: 'var(--text-secondary)' }}>
-            Pantau performa SEO Google Search Console, kampanye Ads, dan insight media sosial Brand {user?.brandName || 'Anda'} pasca automasi.
-          </p>
-        </div>
-      </div>
+      <header style={{ marginBottom: '1.5rem' }}>
+        <h1>Analitik & Insights</h1>
+        <p style={{ color: 'var(--text-secondary)' }}>Ringkasan produksi konten {user.brandName} di Supermat. Data performa Google Search Console per artikel akan menyusul.</p>
+      </header>
 
-      {/* KPI Cards */}
       <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
-        <div className="card" style={styles.kpiCard}>
-          <div style={{ ...styles.kpiIconBox, backgroundColor: 'var(--accent-cyan-glow)' }}>
-            <MousePointerClick size={20} color="var(--accent-cyan)" />
-          </div>
-          <div>
-            <p style={styles.kpiLabel}>Organic Clicks (GSC)</p>
-            <h3 style={styles.kpiValue}>{totalClicks.toLocaleString()}</h3>
-            <span style={styles.kpiDiff} className="badge badge-success">
-              <TrendingUp size={10} />
-              +{Math.round(18 + runCount * 2)}%
-            </span>
-          </div>
-        </div>
+        <Kpi icon={FileText} color="var(--accent-cyan)" label="Artikel dibuat" value={stats.written} sub={`${used}/${limit || '∞'} kuota bulan ini`} />
+        <Kpi icon={CheckCircle2} color="var(--accent-green)" label="Terbit di CMS" value={stats.published} sub={`${stats.drafts} masih draf`} />
+        <Kpi icon={Clock} color="var(--accent-yellow)" label="Menunggu review" value={stats.review} sub={stats.errors ? `${stats.errors} error` : 'tidak ada error'} />
+        <Kpi icon={TrendingUp} color="var(--accent-blue)" label="Total volume target" value={stats.volume.toLocaleString('id-ID')} sub={`${stats.words.toLocaleString('id-ID')} kata ditulis`} />
+      </div>
 
-        <div className="card" style={styles.kpiCard}>
-          <div style={{ ...styles.kpiIconBox, backgroundColor: 'rgba(59, 130, 246, 0.1)' }}>
-            <Eye size={20} color="var(--accent-blue)" />
+      <div className="grid-2" style={{ alignItems: 'start' }}>
+        <div className="card">
+          <h2 style={{ fontSize: '1rem' }}>Artikel per minggu (8 minggu)</h2>
+          <div style={styles.chart}>
+            {stats.weeks.map(w => (
+              <div key={w.label} style={styles.barCol} title={`${w.count} artikel`}>
+                <div style={{ ...styles.bar, height: `${Math.max(4, w.count / maxWeek * 140)}px` }} />
+                <span style={styles.barLabel}>{w.label}</span>
+              </div>
+            ))}
           </div>
-          <div>
-            <p style={styles.kpiLabel}>Impressions (GSC)</p>
-            <h3 style={styles.kpiValue}>{totalImpressions.toLocaleString()}</h3>
-            <span style={styles.kpiDiff} className="badge badge-success">
-              <TrendingUp size={10} />
-              +{Math.round(12 + runCount * 1.5)}%
-            </span>
-          </div>
+          <div style={{ ...styles.sub, marginTop: '0.75rem' }}>Distribusi CMS: {Object.keys(stats.byCms).length ? Object.entries(stats.byCms).map(([c, n]) => `${CMS_LABEL[c] || c} ${n}`).join(' · ') : '–'}</div>
         </div>
-
-        <div className="card" style={styles.kpiCard}>
-          <div style={{ ...styles.kpiIconBox, backgroundColor: 'rgba(245, 158, 11, 0.1)' }}>
-            <Percent size={20} color="var(--accent-yellow)" />
-          </div>
-          <div>
-            <p style={styles.kpiLabel}>CTR Rata-rata</p>
-            <h3 style={styles.kpiValue}>{avgCtr}%</h3>
-            <span style={styles.kpiDiff} className="badge badge-success">
-              <TrendingUp size={10} />
-              +0.8%
-            </span>
-          </div>
-        </div>
-
-        <div className="card" style={styles.kpiCard}>
-          <div style={{ ...styles.kpiIconBox, backgroundColor: 'var(--accent-green-glow)' }}>
-            <CheckCircle2 size={20} color="var(--accent-green)" />
-          </div>
-          <div>
-            <p style={styles.kpiLabel}>Conversions (Ads)</p>
-            <h3 style={styles.kpiValue}>{totalLeads} Leads</h3>
-            <span style={styles.kpiDiff} className="badge badge-success">
-              <TrendingUp size={10} />
-              +{Math.round(25 + runCount * 3)}%
-            </span>
-          </div>
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-muted)' }}><h2 style={{ margin: 0, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Search size={16} /> Keyword dengan volume tertinggi</h2></div>
+          <div className="table-container"><table className="table">
+            <thead><tr><th>Keyword target</th><th>Volume</th><th>KD</th><th>Status</th></tr></thead>
+            <tbody>
+              {loading && <tr><td colSpan={4} style={styles.empty}>Memuat…</td></tr>}
+              {!loading && !top.length && <tr><td colSpan={4} style={styles.empty}>Belum ada data riset. Jalankan keyword dulu.</td></tr>}
+              {top.map(k => <tr key={k.id}><td><div style={{ fontWeight: 600 }}>{k.article?.primaryKeyword || k.keyword}</div><div style={styles.sub}>{k.keyword}</div></td><td>{Number(k.volume).toLocaleString('id-ID')}</td><td>{k.difficulty ?? '–'}</td><td><span className="badge badge-secondary">{k.status}</span></td></tr>)}
+            </tbody>
+          </table></div>
         </div>
       </div>
 
-      {/* Main Charts & Controls */}
-      <div style={styles.chartSection} className="card">
-        <div style={styles.chartHeader}>
-          <div style={styles.tabContainer}>
-            <button 
-              style={{ ...styles.tab, ...(activeChart === 'gsc' ? styles.tabActive : {}) }}
-              onClick={() => setActiveChart('gsc')}
-            >
-              <Eye size={16} />
-              Google Search Console
-            </button>
-            <button 
-              style={{ ...styles.tab, ...(activeChart === 'ads' ? styles.tabActive : {}) }}
-              onClick={() => setActiveChart('ads')}
-            >
-              <DollarSign size={16} />
-              Kampanye Iklan (Meta/Google)
-            </button>
-            <button 
-              style={{ ...styles.tab, ...(activeChart === 'social' ? styles.tabActive : {}) }}
-              onClick={() => setActiveChart('social')}
-            >
-              <Share2 size={16} />
-              Sosial Media Insight
-            </button>
-          </div>
-        </div>
-
-        <div style={styles.chartBody}>
-          {activeChart === 'gsc' && (
-            <div style={styles.svgWrapper}>
-              <h3 style={styles.chartTitle}>Organic Clicks vs Impressions (Minggu Terakhir)</h3>
-              <svg viewBox="0 0 700 240" style={styles.svgChart}>
-                {/* Grids */}
-                {[0, 1, 2, 3].map(i => (
-                  <line 
-                    key={i} 
-                    x1="40" 
-                    y1={30 + i * 50} 
-                    x2="680" 
-                    y2={30 + i * 50} 
-                    stroke="var(--border-muted)" 
-                    strokeWidth="1" 
-                    strokeDasharray="4"
-                  />
-                ))}
-
-                {/* Line: Impressions */}
-                <path
-                  d={gscData.map((d, i) => {
-                    const x = 50 + i * 100;
-                    const y = 200 - (d.impressions / maxImpressions) * 150;
-                    return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-                  }).join(' ')}
-                  fill="none"
-                  stroke="var(--accent-blue)"
-                  strokeWidth="3"
-                />
-
-                {/* Line: Clicks */}
-                <path
-                  d={gscData.map((d, i) => {
-                    const x = 50 + i * 100;
-                    const y = 200 - (d.clicks / maxClicks) * 150;
-                    return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-                  }).join(' ')}
-                  fill="none"
-                  stroke="var(--accent-cyan)"
-                  strokeWidth="3"
-                />
-
-                {/* Nodes & Tooltip dots */}
-                {gscData.map((d, i) => {
-                  const x = 50 + i * 100;
-                  const yImp = 200 - (d.impressions / maxImpressions) * 150;
-                  const yCli = 200 - (d.clicks / maxClicks) * 150;
-                  return (
-                    <g key={i}>
-                      <circle cx={x} cy={yImp} r="5" fill="#09090b" stroke="var(--accent-blue)" strokeWidth="3" />
-                      <circle cx={x} cy={yCli} r="5" fill="#09090b" stroke="var(--accent-cyan)" strokeWidth="3" />
-                      <text x={x} y="225" textAnchor="middle" fill="var(--text-secondary)" fontSize="10" fontFamily="var(--font-sans)">
-                        {d.label}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-              <div style={styles.legend}>
-                <div style={styles.legendItem}>
-                  <div style={{ ...styles.legendDot, backgroundColor: 'var(--accent-cyan)' }}></div>
-                  <span style={styles.legendText}>Clicks (Skala Relatif)</span>
-                </div>
-                <div style={styles.legendItem}>
-                  <div style={{ ...styles.legendDot, backgroundColor: 'var(--accent-blue)' }}></div>
-                  <span style={styles.legendText}>Impressions (Skala Relatif)</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeChart === 'ads' && (
-            <div style={styles.svgWrapper}>
-              <h3 style={styles.chartTitle}>Ad Spend (USD) vs Leads (Conversion)</h3>
-              <svg viewBox="0 0 700 240" style={styles.svgChart}>
-                {/* Grids */}
-                {[0, 1, 2, 3].map(i => (
-                  <line 
-                    key={i} 
-                    x1="40" 
-                    y1={30 + i * 50} 
-                    x2="680" 
-                    y2={30 + i * 50} 
-                    stroke="var(--border-muted)" 
-                    strokeWidth="1" 
-                  />
-                ))}
-
-                {/* Bars */}
-                {adsData.map((d, i) => {
-                  const x = 120 + i * 180;
-                  const hSpend = (d.spend / 100) * 150;
-                  const hLeads = (d.leads / 30) * 150;
-                  return (
-                    <g key={i}>
-                      {/* Bar 1: Spend */}
-                      <rect x={x} y={200 - hSpend} width="35" height={hSpend} fill="var(--accent-yellow)" rx="4" />
-                      {/* Bar 2: Leads */}
-                      <rect x={x + 45} y={200 - hLeads} width="35" height={hLeads} fill="var(--accent-green)" rx="4" />
-                      
-                      <text x={x + 40} y="225" textAnchor="middle" fill="var(--text-primary)" fontSize="12" fontWeight="600">
-                        {d.label} Ads
-                      </text>
-                      <text x={x + 17} y={190 - hSpend} textAnchor="middle" fill="var(--text-secondary)" fontSize="10" fontFamily="var(--font-mono)">
-                        ${d.spend}
-                      </text>
-                      <text x={x + 62} y={190 - hLeads} textAnchor="middle" fill="var(--text-secondary)" fontSize="10" fontFamily="var(--font-mono)">
-                        {d.leads}L
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-              <div style={styles.legend}>
-                <div style={styles.legendItem}>
-                  <div style={{ ...styles.legendDot, backgroundColor: 'var(--accent-yellow)' }}></div>
-                  <span style={styles.legendText}>Biaya Iklan ($ Spend)</span>
-                </div>
-                <div style={styles.legendItem}>
-                  <div style={{ ...styles.legendDot, backgroundColor: 'var(--accent-green)' }}></div>
-                  <span style={styles.legendText}>Leads Didapatkan (Conversions)</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeChart === 'social' && (
-            <div style={styles.svgWrapper}>
-              <h3 style={styles.chartTitle}>Media Sosial Reach & Engagement</h3>
-              <svg viewBox="0 0 700 240" style={styles.svgChart}>
-                {/* Grids */}
-                {[0, 1, 2, 3].map(i => (
-                  <line 
-                    key={i} 
-                    x1="40" 
-                    y1={30 + i * 50} 
-                    x2="680" 
-                    y2={30 + i * 50} 
-                    stroke="var(--border-muted)" 
-                    strokeWidth="1" 
-                    strokeDasharray="4"
-                  />
-                ))}
-
-                {/* Bars for Social reach/engage metrics */}
-                {socialData.map((d, i) => {
-                  const x = 70 + i * 150;
-                  const maxVal = Math.max(...socialData.map(s => s.value));
-                  const h = (d.value / maxVal) * 150;
-                  return (
-                    <g key={i}>
-                      <rect x={x} y={200 - h} width="70" height={h} fill="var(--accent-cyan)" rx="6" />
-                      <text x={x + 35} y="225" textAnchor="middle" fill="var(--text-secondary)" fontSize="11">
-                        {d.label}
-                      </text>
-                      <text x={x + 35} y={190 - h} textAnchor="middle" fill="var(--text-primary)" fontSize="11" fontFamily="var(--font-mono)" fontWeight="600">
-                        {d.value.toLocaleString()}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-              <div style={styles.legend}>
-                <div style={styles.legendItem}>
-                  <div style={{ ...styles.legendDot, backgroundColor: 'var(--accent-cyan)' }}></div>
-                  <span style={styles.legendText}>Jumlah Reach / Impression Medsos</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+      <div className="card" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', alignItems: 'center', opacity: 0.8 }}>
+        <AlertTriangle size={16} color="var(--text-muted)" />
+        <span style={styles.sub}>Integrasi Google Search Console (klik & impresi per artikel) sedang disiapkan oleh 3Our dan akan muncul di halaman ini untuk pelanggan Pro.</span>
       </div>
     </div>
   );
 }
 
+function Kpi({ icon: Icon, color, label, value, sub }) {
+  return (
+    <div className="card" style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+      <div style={{ padding: '0.6rem', borderRadius: 10, backgroundColor: color.replace(')', ', 0.15)').replace('var(', 'color-mix(in srgb, ').replace(', 0.15)', ' 15%, transparent)') }}><Icon size={20} color={color} /></div>
+      <div><div style={styles.sub}>{label}</div><div style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.02em' }}>{value}</div><div style={styles.sub}>{sub}</div></div>
+    </div>
+  );
+}
+
 const styles = {
-  header: {
-    marginBottom: '2rem'
-  },
-  kpiCard: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1.25rem'
-  },
-  kpiIconBox: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '44px',
-    height: '44px',
-    borderRadius: '10px'
-  },
-  kpiLabel: {
-    fontSize: '0.75rem',
-    color: 'var(--text-secondary)',
-    marginBottom: '0.25rem'
-  },
-  kpiValue: {
-    fontSize: '1.25rem',
-    fontWeight: '700',
-    color: 'var(--text-primary)',
-    marginBottom: '0.375rem',
-    lineHeight: '1'
-  },
-  kpiDiff: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.25rem',
-    padding: '0.125rem 0.375rem',
-    fontSize: '0.625rem',
-    fontWeight: '600'
-  },
-  chartSection: {
-    padding: '1.5rem',
-  },
-  chartHeader: {
-    display: 'flex',
-    justifyContent: 'center',
-    borderBottom: '1px solid var(--border-muted)',
-    paddingBottom: '1rem',
-    marginBottom: '1.5rem'
-  },
-  tabContainer: {
-    display: 'inline-flex',
-    gap: '0.5rem',
-    backgroundColor: 'var(--bg-base)',
-    padding: '0.25rem',
-    borderRadius: '8px',
-    border: '1px solid var(--border-muted)'
-  },
-  tab: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    padding: '0.5rem 1rem',
-    fontSize: '0.8125rem',
-    fontWeight: '500',
-    backgroundColor: 'transparent',
-    border: 'none',
-    color: 'var(--text-secondary)',
-    cursor: 'pointer',
-    borderRadius: '6px',
-    transition: 'all var(--transition-fast)'
-  },
-  tabActive: {
-    backgroundColor: 'var(--bg-surface-hover)',
-    color: 'var(--text-primary)',
-    border: '1px solid var(--border-muted)'
-  },
-  chartBody: {
-    minHeight: '260px'
-  },
-  svgWrapper: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    width: '100%'
-  },
-  chartTitle: {
-    fontSize: '0.875rem',
-    fontWeight: '600',
-    marginBottom: '1rem',
-    color: 'var(--text-primary)',
-    alignSelf: 'flex-start'
-  },
-  svgChart: {
-    width: '100%',
-    maxHeight: '240px',
-    overflow: 'visible'
-  },
-  legend: {
-    display: 'flex',
-    gap: '1.5rem',
-    marginTop: '1.5rem',
-    justifyContent: 'center'
-  },
-  legendItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem'
-  },
-  legendDot: {
-    width: '10px',
-    height: '10px',
-    borderRadius: '50%'
-  },
-  legendText: {
-    fontSize: '0.75rem',
-    color: 'var(--text-secondary)'
-  }
+  sub: { fontSize: '0.78rem', color: 'var(--text-muted)' },
+  chart: { display: 'flex', alignItems: 'flex-end', gap: '0.6rem', height: '180px', padding: '0.5rem 0' },
+  barCol: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem', height: '100%' },
+  bar: { width: '100%', borderRadius: '6px 6px 2px 2px', background: 'linear-gradient(180deg, var(--accent-cyan), rgba(6,182,212,0.35))' },
+  barLabel: { fontSize: '0.65rem', color: 'var(--text-muted)' },
+  empty: { textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' },
 };

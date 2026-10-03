@@ -1,103 +1,143 @@
 {
-  "name": "Super Automation: Adapter WordPress Draft",
+  "name": "Supermat Adapter: WordPress",
   "nodes": [
     {
-      "parameters": {},
+      "id": "st-sticky-wp",
+      "name": "Sticky WP",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        80
+      ],
+      "parameters": {
+        "width": 1500,
+        "height": 420,
+        "color": 5,
+        "content": "## 🟦 Adapter WordPress (REST API, kredensial user)\nInput dari Main: `{ cms:{wordpress:{url,user,appPassword}}, article, action:'draft'|'publish', postId? }`.\n**Siapkan WP** membuat header `Authorization: Basic base64(user:appPassword)` (Application Password WP) dan mengubah markdown → HTML. Tanpa `postId` → `POST /wp-json/wp/v2/posts` (buat); dengan `postId` → `POST /wp-json/wp/v2/posts/{id}` (update/terbitkan). **Hasil WP** menerjemahkan respons/err jadi `{ status, postId, draftEditUrl, publicUrl, previewUrl, postStatus, message }`. Tidak ada kredensial 3Our yang dipakai di sini."
+      }
+    },
+    {
+      "id": "n-wp-trigger",
+      "name": "Trigger dari Main",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
       "position": [
-        100,
-        200
+        -500,
+        300
       ],
-      "id": "sub-wf-trigger-wp",
-      "name": "Execute Workflow Trigger"
+      "parameters": {}
     },
     {
-      "parameters": {
-        "jsCode": "// Convert Markdown to HTML for WordPress post content\nconst payload = $json.article;\nconst clientName = $json.clientName;\nconst telegramChatId = $json.telegramChatId;\n\nfunction mdToHtml(md) {\n  if (typeof md !== 'string') return '';\n  return md\n    .replace(/^## (.*$)/gim, '<h2>$1</h2>')\n    .replace(/^### (.*$)/gim, '<h3>$1</h3>')\n    .replace(/^\\* (.*$)/gim, '<li>$1</li>')\n    .replace(/\\*\\*(.*)\\*\\*/gim, '<strong>$1</strong>')\n    .replace(/\\*(.*)\\*/gim, '<em>$1</em>')\n    .split(/\\r?\\n/)\n    .map(line => {\n      const l = line.trim();\n      if (!l) return '';\n      if (l.startsWith('<h') || l.startsWith('<li')) return l;\n      return `<p>${l}</p>`;\n    })\n    .filter(Boolean)\n    .join('\\n');\n}\n\nreturn [{\n  json: {\n    clientName,\n    telegramChatId,\n    keyword: payload.primaryKeyword,\n    title: payload.title,\n    wpPostPayload: {\n      title: payload.title,\n      slug: payload.slug,\n      excerpt: payload.excerpt,\n      content: mdToHtml(payload.bodyMarkdown),\n      status: \"draft\"\n    }\n  }\n}];"
-      },
+      "id": "n-siapkan-wp",
+      "name": "Siapkan WP",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        300,
-        200
+        -280,
+        300
       ],
-      "id": "wp-schema-mapper",
-      "name": "Schema WordPress"
+      "parameters": {
+        "jsCode": "// Adapter WordPress — siapkan request REST API dari kredensial user (Application Password)\nconst IN = $input.first().json;\nconst W = (IN.cms || {}).wordpress || {};\nconst base = String(W.url || '').replace(/\\/+$/, '');\nconst auth = 'Basic ' + Buffer.from(String(W.user) + ':' + String(W.appPassword).replace(/\\s+/g, '')).toString('base64');\nconst A = IN.article || {};\nconst action = IN.action === 'publish' ? 'publish' : 'draft';\nconst postId = String(IN.postId || '').trim();\n\n// ===== Markdown mini-parser (dipakai adapter WordPress & Wix) =====\n// parseMarkdown(md) -> [{type:'heading',level,inlines}|{type:'paragraph',inlines}|{type:'list',ordered,items:[inlines]}|{type:'quote',inlines}]\n// inlines: [{text, bold, italic, code, href}]\nfunction parseInline(s) {\n  const out = []; const src = String(s || '');\n  const push = (t, m) => { if (t) out.push(Object.assign({ text: t }, m || {})); };\n  const re = /(\\*\\*([^*]+)\\*\\*|__([^_]+)__|\\*([^*\\n]+)\\*|_([^_\\n]+)_|`([^`]+)`|\\[([^\\]]+)\\]\\(([^)\\s]+)\\))/g;\n  let m; let last = 0;\n  while ((m = re.exec(src))) {\n    push(src.slice(last, m.index));\n    if (m[2] || m[3]) push(m[2] || m[3], { bold: true });\n    else if (m[4] || m[5]) push(m[4] || m[5], { italic: true });\n    else if (m[6]) push(m[6], { code: true });\n    else if (m[7]) push(m[7], { href: m[8] });\n    last = m.index + m[0].length;\n  }\n  push(src.slice(last));\n  return out;\n}\nfunction parseMarkdown(md) {\n  const lines = String(md || '').replace(/\\r/g, '').split('\\n');\n  const blocks = []; let para = []; let list = null;\n  const flushPara = () => { if (para.length) { blocks.push({ type: 'paragraph', inlines: parseInline(para.join(' ')) }); para = []; } };\n  const flushList = () => { if (list) { blocks.push(list); list = null; } };\n  for (const raw of lines) {\n    const t = raw.trim();\n    if (!t) { flushPara(); flushList(); continue; }\n    let m;\n    if ((m = t.match(/^(#{1,6})\\s+(.*)$/))) { flushPara(); flushList(); blocks.push({ type: 'heading', level: Math.min(Math.max(m[1].length, 2), 4), inlines: parseInline(m[2].replace(/\\s#+$/, '')) }); continue; }\n    if ((m = t.match(/^[-*+]\\s+(.*)$/))) { flushPara(); if (!list || list.ordered) { flushList(); list = { type: 'list', ordered: false, items: [] }; } list.items.push(parseInline(m[1])); continue; }\n    if ((m = t.match(/^\\d+[.)]\\s+(.*)$/))) { flushPara(); if (!list || !list.ordered) { flushList(); list = { type: 'list', ordered: true, items: [] }; } list.items.push(parseInline(m[1])); continue; }\n    if ((m = t.match(/^>\\s?(.*)$/))) { flushPara(); flushList(); blocks.push({ type: 'quote', inlines: parseInline(m[1]) }); continue; }\n    if (/^(-{3,}|\\*{3,})$/.test(t)) { flushPara(); flushList(); continue; }\n    flushList(); para.push(t);\n  }\n  flushPara(); flushList();\n  return blocks;\n}\nconst escHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nfunction inlinesToHtml(inl) {\n  return inl.map(x => { let h = escHtml(x.text); if (x.code) h = '<code>' + h + '</code>'; if (x.bold) h = '<strong>' + h + '</strong>'; if (x.italic) h = '<em>' + h + '</em>'; if (x.href) h = '<a href=\"' + escHtml(x.href) + '\" target=\"_blank\" rel=\"noopener\">' + h + '</a>'; return h; }).join('');\n}\nfunction markdownToHtml(md) {\n  return parseMarkdown(md).map(b => {\n    if (b.type === 'heading') return '<h' + b.level + '>' + inlinesToHtml(b.inlines) + '</h' + b.level + '>';\n    if (b.type === 'quote') return '<blockquote><p>' + inlinesToHtml(b.inlines) + '</p></blockquote>';\n    if (b.type === 'list') return (b.ordered ? '<ol>' : '<ul>') + b.items.map(it => '<li>' + inlinesToHtml(it) + '</li>').join('') + (b.ordered ? '</ol>' : '</ul>');\n    return '<p>' + inlinesToHtml(b.inlines) + '</p>';\n  }).join('\\n');\n}\n// Ricos (Wix rich content)\nfunction markdownToRicos(md) {\n  let seq = 0; const nid = () => 'n' + (++seq).toString(36) + Date.now().toString(36).slice(-4);\n  const textNode = x => { const dec = []; if (x.bold) dec.push({ type: 'BOLD', fontWeightValue: 700 }); if (x.italic) dec.push({ type: 'ITALIC', italicData: true }); if (x.href) dec.push({ type: 'LINK', linkData: { link: { url: x.href, target: 'BLANK' } } }); return { type: 'TEXT', id: '', nodes: [], textData: { text: x.text, decorations: dec } }; };\n  const paragraph = inl => ({ type: 'PARAGRAPH', id: nid(), nodes: inl.map(textNode), paragraphData: {} });\n  const nodes = [];\n  for (const b of parseMarkdown(md)) {\n    if (b.type === 'heading') nodes.push({ type: 'HEADING', id: nid(), nodes: b.inlines.map(textNode), headingData: { level: b.level } });\n    else if (b.type === 'quote') nodes.push({ type: 'BLOCKQUOTE', id: nid(), nodes: [paragraph(b.inlines)], blockquoteData: {} });\n    else if (b.type === 'list') nodes.push({ type: b.ordered ? 'ORDERED_LIST' : 'BULLETED_LIST', id: nid(), nodes: b.items.map(it => ({ type: 'LIST_ITEM', id: nid(), nodes: [paragraph(it)] })), [b.ordered ? 'orderedListData' : 'bulletedListData']: { indentation: 0 } });\n    else nodes.push(paragraph(b.inlines));\n  }\n  return { nodes, metadata: { version: 1 } };\n}\n\n\nconst payload = {};\nif (A.title) {\n  payload.title = String(A.title);\n  payload.slug = String(A.slug || '').trim() || undefined;\n  payload.excerpt = String(A.excerpt || '');\n  payload.content = markdownToHtml(A.bodyMarkdown || A.body || '');\n}\npayload.status = action;\nif (!A.title && !postId) throw new Error('Tidak ada artikel maupun postId untuk diproses.');\n\nreturn [{ json: {\n  cmsType: 'wordpress', action, postId, base, auth,\n  url: postId ? base + '/wp-json/wp/v2/posts/' + postId : base + '/wp-json/wp/v2/posts',\n  payload,\n  keyword: A.primaryKeyword || '', title: A.title || '',\n  requestId: IN.requestId || '',\n} }];\n"
+      }
     },
     {
-      "parameters": {
-        "method": "POST",
-        "url": "https://3ourasia.id/wp-json/wp/v2/posts",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ $json.wpPostPayload }}",
-        "options": {}
-      },
+      "id": "n-wp-request",
+      "name": "WP: Kirim Post",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        500,
-        200
+        -60,
+        300
       ],
-      "id": "publish-wp-draft",
-      "name": "Publish WordPress Draft",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "wp-api-credentials-placeholder",
-          "name": "WordPress Application Pass"
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.auth }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Supermat/1.0 (+https://3ourasia.id)"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 45000,
+          "redirect": {
+            "redirect": {}
+          }
         }
       }
     },
     {
-      "parameters": {
-        "jsCode": "const res = $('Publish WordPress Draft').first().json;\nconst schema = $('Schema WordPress').first().json;\nconst triggerData = $('Execute Workflow Trigger').first().json;\n\n// WP response contains edit links under wp-admin\nconst draftEditUrl = `https://3ourasia.id/wp-admin/post.php?post=${res.id}&action=edit`;\n\nreturn [{\n  json: {\n    clientName: schema.clientName,\n    telegramChatId: schema.telegramChatId,\n    draftEditUrl,\n    keyword: schema.keyword,\n    title: schema.title,\n    article: triggerData.article || null,\n    status: \"success\"\n  }\n}];"
-      },
+      "id": "n-hasil-wp",
+      "name": "Hasil WP",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        700,
-        200
+        160,
+        300
       ],
-      "id": "finalize-wp-adapter",
-      "name": "Finalize WP Adapter Data"
+      "parameters": {
+        "jsCode": "// Adapter WordPress — rapikan hasil REST API jadi format standar Supermat\nconst P = $('Siapkan WP').first().json;\nconst R = $input.first().json || {};\nconst status = Number(R.statusCode || R.status || 0);\nconst body = R.body && typeof R.body === 'object' ? R.body : (R.body ? (() => { try { return JSON.parse(R.body); } catch (e) { return { raw: String(R.body).slice(0, 300) }; } })() : R);\nconst okHttp = status >= 200 && status < 300;\n\nif (!okHttp || !body.id) {\n  let msg = body.message || body.code || (body.raw ? 'Respons bukan JSON: ' + body.raw : '') || R.error && (R.error.message || String(R.error)) || ('HTTP ' + status);\n  if (status === 401 || status === 403) msg = 'WordPress menolak akses (' + status + '). Cek username & Application Password, dan pastikan REST API tidak diblokir plugin keamanan. Detail: ' + (body.message || body.code || '-');\n  if (status === 405) msg = 'Situs menolak metode POST ke REST API (405). Kemungkinan bukan situs WordPress, REST API dinonaktifkan, atau diblokir firewall/plugin keamanan.';\n  if (status === 404) msg = 'Endpoint REST WordPress tidak ditemukan (404). Pastikan URL situs benar dan permalink/REST API aktif.';\n  if (!status) msg = 'Tidak bisa menghubungi situs WordPress: ' + msg;\n  return [{ json: { status: 'error', cmsType: 'wordpress', action: P.action, httpStatus: status, message: msg, requestId: P.requestId } }];\n}\n\nconst id = body.id;\nconst link = body.link || '';\nconst postStatus = body.status || P.action;\nreturn [{ json: {\n  status: 'ok', cmsType: 'wordpress', action: P.action,\n  postId: String(id), postStatus,\n  draftEditUrl: P.base + '/wp-admin/post.php?post=' + id + '&action=edit',\n  publicUrl: postStatus === 'publish' ? link : '',\n  previewUrl: link ? link + (link.includes('?') ? '&' : '?') + 'preview=true' : '',\n  title: (body.title && body.title.rendered) || P.title,\n  message: postStatus === 'publish' ? 'Artikel terbit di WordPress.' : 'Draf tersimpan di WordPress.',\n  requestId: P.requestId,\n} }];\n"
+      }
     }
   ],
   "connections": {
-    "Schema WordPress": {
+    "Trigger dari Main": {
       "main": [
         [
           {
-            "node": "Publish WordPress Draft",
+            "node": "Siapkan WP",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Publish WordPress Draft": {
+    "Siapkan WP": {
       "main": [
         [
           {
-            "node": "Finalize WP Adapter Data",
+            "node": "WP: Kirim Post",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Execute Workflow Trigger": {
+    "WP: Kirim Post": {
       "main": [
         [
           {
-            "node": "Schema WordPress",
+            "node": "Hasil WP",
             "type": "main",
             "index": 0
           }
         ]
       ]
     }
+  },
+  "settings": {
+    "executionOrder": "v1"
   }
 }

@@ -1,1058 +1,325 @@
+// Supermat Backend — API web app + "3Our API" publik untuk klien.
+// Alur: user daftar → simpan kredensial CMS (WordPress/Wix) → jalankan keyword → n8n (3Our) riset + tulis artikel
+// → (Premium) review di web → publish ke CMS user lewat n8n adapter. Billing masih dummy.
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { createClient } from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
+import { db, dbMode } from './db.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+const JWT_SECRET = process.env.JWT_SECRET || 'ganti-di-env-JWT_SECRET';
+const N8N_BASE_URL = (process.env.N8N_BASE_URL || 'https://n8n.3ourasia.id').replace(/\/+$/, '');
+const N8N_URL_RUN = process.env.N8N_URL_RUN || `${N8N_BASE_URL}/webhook/supermat-trigger`;
+const N8N_URL_PUBLISH = process.env.N8N_URL_PUBLISH || `${N8N_BASE_URL}/webhook/supermat-publish`;
+const SUPERMAT_API_KEY = process.env.SUPERMAT_API_KEY || ''; // key 3Our untuk memanggil n8n (header X-Supermat-Key)
+const CRON_SECRET = process.env.CRON_SECRET || '';
+const FREE_MONTHLY_LIMIT = Number(process.env.FREE_MONTHLY_LIMIT || 3);
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const dbPath = path.join(__dirname, 'database.json');
-
-// Log helper
-const log = (msg) => {
-  const time = new Date().toISOString();
-  console.log(`[${time}] ${msg}`);
+export const PLANS = {
+  free: { id: 'free', name: 'Free', price: 0, monthlyArticles: FREE_MONTHLY_LIMIT, features: ['3 artikel / bulan', 'Riset keyword + AI writer', 'Draf langsung ke CMS', '1 koneksi CMS'] },
+  premium: { id: 'premium', name: 'Pro', price: 299000, monthlyArticles: 60, features: ['60 artikel / bulan', 'Web Approver: review & edit sebelum terbit', 'Jadwal otomatis harian/mingguan', 'WordPress + Wix', 'Akses 3Our API (API key)', 'Prioritas dukungan 3Our'] },
 };
 
-// Helper to generate Sanity Studio draft URL dynamically (supports project ID, full base URL, or custom studio URL)
-const getSanityDraftUrl = (projId, draftId, studioUrl) => {
-  const baseId = projId ? projId.trim() : 'mwwvwgiw';
-  const urlSource = (studioUrl && studioUrl.trim()) ? studioUrl.trim() : baseId;
-  
-  if (urlSource.startsWith('http://') || urlSource.startsWith('https://')) {
-    const base = urlSource.replace(/\/+$/, '');
-    if (base.includes('/structure/post') || base.includes('/desk/post')) {
-      return `${base};${draftId}`;
-    }
-    return `${base}/structure/post;${draftId}`;
-  }
-  return `https://${baseId}.sanity.studio/structure/post;${draftId}`;
-};
+const log = (msg) => console.log(`[${new Date().toISOString()}] ${msg}`);
 
-// Helper to parse and return friendly error messages from n8n response
-const getFriendlyN8nError = (errorText, defaultPrefix) => {
-  let parsed = null;
-  try {
-    parsed = JSON.parse(errorText);
-  } catch (e) {
-    if (typeof errorText === 'string') {
-      if (errorText.includes('429')) return 'n8n/API Limit: Terlalu banyak permintaan (Rate Limit 429). Harap tunggu beberapa saat.';
-      if (errorText.includes('401') || errorText.includes('unauthorized')) return 'Akses ditolak (Unauthorized 401). Harap periksa kembali kunci API / Token Anda.';
-      if (errorText.includes('404')) return 'Webhook n8n tidak ditemukan (404). Pastikan workflow n8n sudah diaktifkan (Active).';
-    }
-  }
+// ---------- CORS ----------
+const allowed = String(process.env.FRONTEND_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (allowed.length === 0) return cb(null, /localhost|127\.0\.0\.1|\.vercel\.app$/.test(new URL(origin).host) ? true : false);
+    return cb(null, allowed.includes(origin));
+  },
+  credentials: true,
+}));
+app.use(express.json({ limit: '2mb' }));
 
-  if (parsed) {
-    const msg = parsed.message || parsed.error || '';
-    if (msg === 'Error in workflow') {
-      return 'Terjadi error di salah satu node n8n (misal: API key mati, rate limit Google/RapidAPI, atau error penulisan AI). Silakan buka n8n untuk melihat detail eksekusi.';
-    }
-    if (msg.includes('not registered')) {
-      return 'Webhook n8n belum aktif (404). Silakan aktifkan workflow Anda dengan mengklik tombol toggle Active di pojok kanan atas editor n8n.';
-    }
-    return msg;
-  }
+// ---------- Helpers ----------
+const genApiKey = () => 'spm_live_' + randomBytes(18).toString('base64url');
+const publicUser = (u) => u && ({ id: u.id, email: u.email, brandName: u.brand_name, niche: u.niche, plan: u.plan || 'free', apiKey: u.api_key, webApprover: u.web_approver !== false, createdAt: u.created_at });
+const signToken = (u) => jwt.sign({ sub: u.id, email: u.email }, JWT_SECRET, { expiresIn: '30d' });
+const monthStart = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString(); };
+const mask = (s) => { s = String(s || ''); return s.length <= 6 ? (s ? '••••' : '') : s.slice(0, 3) + '••••' + s.slice(-3); };
 
-  return `${defaultPrefix}: ${errorText}`;
-};
+async function usageOf(userId) {
+  const rows = await db.findMany('keywords', { user_id: userId });
+  const since = monthStart();
+  return rows.filter(k => k.last_run_at && k.last_run_at >= since).length;
+}
+const planOf = (u) => PLANS[u.plan] || PLANS.free;
 
-// Initialize Supabase Client
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
-let supabase = null;
-
-if (supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder')) {
-  try {
-    supabase = createClient(supabaseUrl, supabaseKey);
-    log(`[Supabase] Terhubung ke instance Supabase: ${supabaseUrl}`);
-  } catch (err) {
-    log(`[Supabase Error] Gagal menginisialisasi client: ${err.message}`);
-  }
-} else {
-  log(`[Supabase Info] SUPABASE_URL atau SUPABASE_KEY tidak ditemukan. Menjalankan fallback database.json lokal.`);
+function friendlyN8nError(status, text) {
+  let parsed = null; try { parsed = JSON.parse(text); } catch (e) {}
+  const msg = parsed && (parsed.message || parsed.error);
+  if (status === 404 || /not registered/i.test(text)) return 'Endpoint n8n belum aktif (404). Pastikan workflow "Supermat API" sudah dipublish.';
+  if (status === 401) return 'Backend ditolak n8n (401): SUPERMAT_API_KEY di server tidak cocok dengan key di n8n.';
+  if (/Error in workflow/i.test(text)) return 'Terjadi error di workflow n8n. Cek eksekusi terakhir di n8n.';
+  return msg || `n8n HTTP ${status}`;
 }
 
-// Fallback Database Read/Write Helpers
-const readDB = () => {
+async function callN8n(url, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (SUPERMAT_API_KEY) headers['X-Supermat-Key'] = SUPERMAT_API_KEY;
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  const text = await res.text();
+  let json = null; try { json = JSON.parse(text); } catch (e) {}
+  if (!res.ok || !json || json.status === 'error') {
+    const err = new Error((json && json.message) || friendlyN8nError(res.status, text));
+    err.status = res.status >= 400 && res.status < 500 ? 400 : 502; err.n8n = json; throw err;
+  }
+  return json;
+}
+
+// ---------- Auth middleware ----------
+async function auth(req, res, next) {
   try {
-    if (!fs.existsSync(dbPath)) {
-      fs.writeFileSync(dbPath, JSON.stringify({ users: {}, otps: {}, pending_reviews: {} }, null, 2), 'utf8');
-    }
-    const data = fs.readFileSync(dbPath, 'utf8');
-    return JSON.parse(data);
-  } catch (err) {
-    log(`[Database Error] Gagal membaca database.json: ${err.message}`);
-    return { users: {}, otps: {}, pending_reviews: {} };
-  }
-};
+    const h = String(req.headers.authorization || '');
+    const token = h.startsWith('Bearer ') ? h.slice(7) : '';
+    if (!token) return res.status(401).json({ error: 'Belum login.' });
+    const payload = jwt.verify(token, JWT_SECRET);
+    const user = await db.findOne('accounts', { id: payload.sub });
+    if (!user) return res.status(401).json({ error: 'Akun tidak ditemukan.' });
+    req.user = user; next();
+  } catch (e) { return res.status(401).json({ error: 'Sesi tidak valid, silakan login ulang.' }); }
+}
+async function apiKeyAuth(req, res, next) {
+  const key = String(req.headers['x-api-key'] || '').trim() || String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (!key) return res.status(401).json({ status: 'error', message: 'Kirim header X-API-Key.' });
+  const user = await db.findOne('accounts', { api_key: key });
+  if (!user) return res.status(401).json({ status: 'error', message: 'API key tidak valid.' });
+  req.user = user; next();
+}
+const wrap = (fn) => (req, res) => fn(req, res).catch(e => { log(`[ERR] ${req.method} ${req.path}: ${e.message}`); res.status(e.status || 500).json({ error: e.message, n8n: e.n8n || undefined }); });
 
-const writeDB = (data) => {
-  try {
-    fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
-  } catch (err) {
-    log(`[Database Error] Gagal menulis ke database.json: ${err.message}`);
-  }
-};
+// ---------- Health ----------
+app.get('/api/health', (req, res) => res.json({ status: 'ok', db: dbMode, n8n: N8N_BASE_URL, time: new Date().toISOString() }));
 
-// Helper to generate simulated article
-const getSimulatedArticle = (keyword, geo, ln, cms) => {
-  return {
-    title: `10 Tips Ampuh ${keyword} untuk Pertumbuhan Bisnis`,
-    slug: keyword.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
-    excerpt: `Temukan 10 strategi praktis ${keyword} yang dirancang khusus untuk meningkatkan omset dan engagement brand secara organik tahun ini.`,
-    bodyMarkdown: `## Pendahuluan\n\nDalam lanskap industri modern saat ini, memiliki strategi yang solid untuk **${keyword}** adalah kunci utama untuk memenangkan pasar. Kafe, restoran, dan bisnis kuliner harus beradaptasi dengan tren digital agar tetap relevan.\n\n## Mengapa Ini Penting?\n\nBanyak pemilik brand melakukan kesalahan dengan berfokus hanya pada produk. Padahal, penargetan audiens yang tepat dan optimasi SEO lokal jauh lebih berdampak. Berikut adalah beberapa langkah kunci:\n\n1. **Riset Tren Pasar**: Selalu pantau apa yang sedang viral di Google Trends dan media sosial.\n2. **Gunakan Copywriting yang Humanis**: Hindari bahasa robotik formal. Sapa audiens Anda dengan santai namun profesional.\n3. **Konsistensi Konten**: Menulis artikel secara terstruktur membantu Google mengindeks website Anda lebih cepat.\n\n## Kesimpulan\n\nJadi, tunggu apa lagi? Terapkan strategi ini sekarang dan lihat perubahannya. Jika Anda butuh bantuan dalam content marketing yang terukur, hubungi tim 3our Asia untuk konsultasi gratis!`,
-    searchVolume: Math.floor(Math.random() * 2000) + 300,
-    difficulty: Math.floor(Math.random() * 20) + 12
-  };
-};
-
-// Helper to send WhatsApp via Fonnte
-const sendWhatsAppMessage = async (phone, message) => {
-  const token = process.env.FONNTE_TOKEN;
-  log(`[WhatsApp] Mengirim pesan ke ${phone}: "${message.substring(0, 60).replace(/\n/g, ' ')}..."`);
-  
-  if (!token || token.trim() === '' || token.includes('your_token') || token.includes('token_fonnte_asli_anda')) {
-    log(`[Fonnte Simulator] Token Fonnte tidak terkonfigurasi. Simulasi kirim pesan berhasil.`);
-    return { status: true, simulated: true };
-  }
-
-  try {
-    const params = new URLSearchParams();
-    params.append('target', phone);
-    params.append('message', message);
-
-    const response = await fetch('https://api.fonnte.com/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': token
-      },
-      body: params
-    });
-
-    const data = await response.json();
-    log(`[Fonnte Response] Status: ${data.status || 'false'}, Reason: ${data.reason || 'None'}`);
-    return data;
-  } catch (error) {
-    log(`[Fonnte Error] Gagal menghubungi Fonnte API: ${error.message}`);
-    return { status: false, error: error.message };
-  }
-};
-// Allow CORS from localhost and Vercel domains
-app.use(cors({
-  origin: (origin, callback) => {
-    // Dynamic origin reflection allows both dev localhost and production vercel.app domains
-    callback(null, true);
-  },
-  credentials: true
+// ---------- Auth ----------
+app.post('/api/auth/register', wrap(async (req, res) => {
+  const { email, password, brandName, niche } = req.body || {};
+  const em = String(email || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) throw Object.assign(new Error('Email tidak valid.'), { status: 400 });
+  if (String(password || '').length < 6) throw Object.assign(new Error('Kata sandi minimal 6 karakter.'), { status: 400 });
+  if (await db.findOne('accounts', { email: em })) throw Object.assign(new Error('Email sudah terdaftar, silakan masuk.'), { status: 409 });
+  const user = await db.insert('accounts', { email: em, password_hash: await bcrypt.hash(password, 10), brand_name: String(brandName || '').trim() || em.split('@')[0], niche: String(niche || 'Other'), plan: 'free', api_key: genApiKey(), web_approver: true });
+  res.json({ token: signToken(user), user: publicUser(user) });
+}));
+app.post('/api/auth/login', wrap(async (req, res) => {
+  const em = String((req.body || {}).email || '').trim().toLowerCase();
+  const user = await db.findOne('accounts', { email: em });
+  if (!user || !(await bcrypt.compare(String((req.body || {}).password || ''), user.password_hash))) throw Object.assign(new Error('Email atau kata sandi salah.'), { status: 401 });
+  res.json({ token: signToken(user), user: publicUser(user) });
+}));
+app.get('/api/me', auth, wrap(async (req, res) => {
+  const conns = await db.findMany('cms_connections', { user_id: req.user.id });
+  const runs = await usageOf(req.user.id);
+  res.json({ user: publicUser(req.user), plan: planOf(req.user), usage: { runsThisMonth: runs, limit: planOf(req.user).monthlyArticles }, cms: conns.map(maskConn) });
+}));
+app.patch('/api/me', auth, wrap(async (req, res) => {
+  const patch = {};
+  if (req.body.brandName !== undefined) patch.brand_name = String(req.body.brandName).trim();
+  if (req.body.niche !== undefined) patch.niche = String(req.body.niche);
+  if (req.body.webApprover !== undefined) patch.web_approver = !!req.body.webApprover;
+  const u = await db.update('accounts', { id: req.user.id }, patch);
+  res.json({ user: publicUser(u) });
+}));
+app.post('/api/me/api-key/rotate', auth, wrap(async (req, res) => {
+  const u = await db.update('accounts', { id: req.user.id }, { api_key: genApiKey() });
+  res.json({ user: publicUser(u) });
 }));
 
-
-app.use(express.json());
-
-// Test health endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date() });
-});
-
-/**
- * Endpoint: Request OTP (WhatsApp)
- */
-app.post('/api/whatsapp/request-otp', async (req, res) => {
-  const { phone } = req.body;
-  if (!phone) {
-    return res.status(400).json({ error: 'Nomor telepon diperlukan.' });
+// ---------- CMS connections ----------
+const CMS_TYPES = ['wordpress', 'wix'];
+function maskConn(c) {
+  const cfg = c.config || {};
+  const safe = c.cms_type === 'wordpress'
+    ? { url: cfg.url, user: cfg.user, appPassword: mask(cfg.appPassword) }
+    : { siteId: cfg.siteId, apiKey: mask(cfg.apiKey), memberId: cfg.memberId || '' };
+  return { cmsType: c.cms_type, config: safe, verified: !!c.verified, verifiedAt: c.verified_at, updatedAt: c.updated_at };
+}
+function normalizeConfig(type, input) {
+  const s = v => String(v ?? '').trim();
+  if (type === 'wordpress') {
+    let url = s(input.url); if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url; url = url.replace(/\/+$/, '');
+    return { url, user: s(input.user), appPassword: s(input.appPassword) };
   }
-
-  let cleanPhone = phone.replace(/[^0-9]/g, '');
-  if (cleanPhone.startsWith('0')) {
-    cleanPhone = '62' + cleanPhone.slice(1);
+  return { siteId: s(input.siteId), apiKey: s(input.apiKey), memberId: s(input.memberId) };
+}
+async function testConnection(type, cfg) {
+  try { return await testConnectionInner(type, cfg); }
+  catch (e) { return { ok: false, message: 'Tidak bisa menghubungi ' + (type === 'wordpress' ? 'situs WordPress' : 'Wix API') + ': ' + e.message }; }
+}
+async function testConnectionInner(type, cfg) {
+  if (type === 'wordpress') {
+    if (!cfg.url || !cfg.user || !cfg.appPassword) return { ok: false, message: 'Isi URL situs, username, dan Application Password.' };
+    const r = await fetch(cfg.url + '/wp-json/wp/v2/users/me?context=edit', { headers: { Authorization: 'Basic ' + Buffer.from(cfg.user + ':' + cfg.appPassword.replace(/\s+/g, '')).toString('base64'), 'User-Agent': 'Supermat/1.0' } });
+    const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {}
+    if (r.ok && j && j.id) { const caps = j.capabilities || {}; const canWrite = caps.edit_posts !== false; return { ok: true, message: `Terhubung sebagai ${j.name || j.slug}${canWrite ? '' : ' (tidak punya izin menulis post)'}`, meta: { userId: j.id, name: j.name } }; }
+    if (r.status === 401 || r.status === 403) return { ok: false, message: 'WordPress menolak login (' + r.status + '). Pastikan Application Password benar (Users → Profile → Application Passwords).' };
+    if (r.status === 404) return { ok: false, message: 'REST API tidak ditemukan. Pastikan URL benar dan /wp-json aktif.' };
+    return { ok: false, message: 'Gagal: HTTP ' + r.status + ' ' + (j && j.message ? j.message : '') };
   }
+  if (!cfg.siteId || !cfg.apiKey) return { ok: false, message: 'Isi Site ID dan API Key Wix.' };
+  const r = await fetch('https://www.wixapis.com/blog/v3/posts?paging.limit=1', { headers: { Authorization: cfg.apiKey, 'wix-site-id': cfg.siteId } });
+  const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {}
+  if (r.ok) return { ok: true, message: 'Terhubung ke Wix Blog' + (j && j.posts && j.posts.length ? ' (post terakhir: ' + j.posts[0].title + ')' : ' (belum ada post)'), meta: { memberId: j && j.posts && j.posts[0] ? j.posts[0].memberId : '' } };
+  if (r.status === 401 || r.status === 403) return { ok: false, message: 'Wix menolak API key / Site ID (' + r.status + '). Buat API key di Wix Account → API Keys dengan izin Blog.' };
+  return { ok: false, message: 'Gagal: HTTP ' + r.status + ' ' + (j && j.message ? j.message : '') };
+}
+app.get('/api/cms', auth, wrap(async (req, res) => res.json({ cms: (await db.findMany('cms_connections', { user_id: req.user.id })).map(maskConn) })));
+app.put('/api/cms/:type', auth, wrap(async (req, res) => {
+  const type = String(req.params.type).toLowerCase();
+  if (!CMS_TYPES.includes(type)) throw Object.assign(new Error('CMS belum didukung: ' + type), { status: 400 });
+  const existing = await db.findOne('cms_connections', { user_id: req.user.id, cms_type: type });
+  const incoming = normalizeConfig(type, req.body.config || req.body);
+  // field rahasia yang dikirim dalam bentuk mask ("••••") → pertahankan nilai lama
+  if (existing) { for (const k of ['appPassword', 'apiKey']) if (incoming[k] && incoming[k].includes('••••')) incoming[k] = existing.config[k]; }
+  const test = req.body.test !== false ? await testConnection(type, incoming) : { ok: false, message: 'Belum dites' };
+  const row = await db.upsert('cms_connections', { user_id: req.user.id, cms_type: type }, { config: incoming, verified: test.ok, verified_at: test.ok ? new Date().toISOString() : null });
+  if (test.ok && type === 'wix' && test.meta && test.meta.memberId && !incoming.memberId) await db.update('cms_connections', { id: row.id }, { config: { ...incoming, memberId: test.meta.memberId } });
+  res.json({ cms: maskConn(await db.findOne('cms_connections', { id: row.id })), test });
+}));
+app.post('/api/cms/:type/test', auth, wrap(async (req, res) => {
+  const type = String(req.params.type).toLowerCase();
+  const c = await db.findOne('cms_connections', { user_id: req.user.id, cms_type: type });
+  if (!c) throw Object.assign(new Error('Kredensial belum disimpan.'), { status: 404 });
+  const test = await testConnection(type, c.config);
+  await db.update('cms_connections', { id: c.id }, { verified: test.ok, verified_at: test.ok ? new Date().toISOString() : null });
+  res.json({ test });
+}));
+app.delete('/api/cms/:type', auth, wrap(async (req, res) => { await db.remove('cms_connections', { user_id: req.user.id, cms_type: String(req.params.type).toLowerCase() }); res.json({ ok: true }); }));
 
-  const code = Math.floor(1000 + Math.random() * 9000).toString();
-  const expiresAt = Date.now() + 5 * 60 * 1000; // 5 menit
+// ---------- Keywords & automation ----------
+const kwPublic = (k) => ({ id: k.id, keyword: k.keyword, geo: k.geo, ln: k.ln, cms: k.cms_type, status: k.status, schedule: k.schedule, volume: k.volume, difficulty: k.difficulty, article: k.article || null, postId: k.post_id || '', draftUrl: k.draft_url || '', publicUrl: k.public_url || '', postStatus: k.post_status || '', error: k.error || '', date: (k.created_at || '').slice(0, 10), lastRunAt: k.last_run_at, nextRunAt: k.next_run_at });
+const nextRun = (schedule) => { if (schedule === 'daily') return new Date(Date.now() + 86400e3).toISOString(); if (schedule === 'weekly') return new Date(Date.now() + 7 * 86400e3).toISOString(); return null; };
 
-  log(`Meminta OTP untuk ${cleanPhone}: ${code}`);
+app.get('/api/keywords', auth, wrap(async (req, res) => res.json({ keywords: (await db.findMany('keywords', { user_id: req.user.id }, { orderBy: 'created_at' })).map(kwPublic) })));
+app.post('/api/keywords', auth, wrap(async (req, res) => {
+  const b = req.body || {};
+  const keyword = String(b.keyword || '').trim(); if (!keyword) throw Object.assign(new Error('Keyword wajib diisi.'), { status: 400 });
+  const cms = String(b.cmsType || b.cms || 'wordpress').toLowerCase();
+  const schedule = ['immediate', 'daily', 'weekly'].includes(b.schedule) ? b.schedule : 'immediate';
+  if (schedule !== 'immediate' && req.user.plan !== 'premium') throw Object.assign(new Error('Jadwal otomatis hanya untuk paket Pro.'), { status: 402 });
+  const row = await db.insert('keywords', { user_id: req.user.id, keyword, geo: String(b.geo || 'ID').toUpperCase(), ln: String(b.ln || 'id').toLowerCase(), cms_type: cms, status: 'Pending', schedule, next_run_at: nextRun(schedule) });
+  res.json({ keyword: kwPublic(row) });
+}));
+app.patch('/api/keywords/:id', auth, wrap(async (req, res) => {
+  const k = await db.findOne('keywords', { id: req.params.id, user_id: req.user.id }); if (!k) throw Object.assign(new Error('Tidak ditemukan.'), { status: 404 });
+  const patch = {}; const b = req.body || {};
+  if (b.article) patch.article = { ...(k.article || {}), ...b.article };
+  if (b.schedule) { patch.schedule = b.schedule; patch.next_run_at = nextRun(b.schedule); }
+  if (b.status) patch.status = String(b.status);
+  res.json({ keyword: kwPublic(await db.update('keywords', { id: k.id }, patch)) });
+}));
+app.delete('/api/keywords/:id', auth, wrap(async (req, res) => { await db.remove('keywords', { id: req.params.id, user_id: req.user.id }); res.json({ ok: true }); }));
 
-  let writeSuccess = false;
-  if (supabase) {
-    try {
-      const { error } = await supabase
-        .from('otps')
-        .upsert({ phone: cleanPhone, code, expires_at: expiresAt });
-      if (error) throw error;
-      writeSuccess = true;
-    } catch (err) {
-      log(`[Supabase Error] Gagal upsert OTP: ${err.message}. Fallback ke database.json`);
-    }
-  }
-
-  if (!writeSuccess) {
-    const db = readDB();
-    db.otps = db.otps || {};
-    db.otps[cleanPhone] = { code, expiresAt };
-    writeDB(db);
-  }
-
-  const message = `[Supermat] Kode OTP Anda adalah: ${code}. Berlaku selama 5 menit. Jangan bagikan kode ini kepada siapapun.`;
-  const result = await sendWhatsAppMessage(cleanPhone, message);
-
-  if (result.simulated || !result.status) {
-    return res.json({
-      success: true,
-      message: result.simulated ? 'OTP terkirim via simulator.' : `OTP terkirim via simulator fallback (Gagal Fonnte: ${result.reason || result.error})`,
-      simulated: true,
-      code
-    });
-  }
-
-  res.json({ success: true, message: 'OTP berhasil dikirim ke WhatsApp Anda.' });
-});
-
-/**
- * Endpoint: Verify OTP
- */
-app.post('/api/whatsapp/verify-otp', async (req, res) => {
-  const { phone, code } = req.body;
-  if (!phone || !code) {
-    return res.status(400).json({ error: 'Nomor telepon dan kode OTP diperlukan.' });
-  }
-
-  let cleanPhone = phone.replace(/[^0-9]/g, '');
-  if (cleanPhone.startsWith('0')) {
-    cleanPhone = '62' + cleanPhone.slice(1);
-  }
-
-  let otpInfo = null;
-  let useSupabase = false;
-
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('otps')
-        .select('*')
-        .eq('phone', cleanPhone)
-        .single();
-      if (error && error.code !== 'PGRST116') throw error;
-      otpInfo = data;
-      useSupabase = true;
-    } catch (err) {
-      log(`[Supabase Error] Gagal fetch OTP: ${err.message}. Fallback ke database.json`);
-    }
-  }
-
-  if (!useSupabase) {
-    const db = readDB();
-    otpInfo = db.otps?.[cleanPhone];
-    // Map database.json property name to match Supabase for validation
-    if (otpInfo) {
-      otpInfo.expires_at = otpInfo.expiresAt;
-    }
-  }
-
-  if (!otpInfo) {
-    return res.status(400).json({ error: 'Tidak ada permintaan OTP aktif untuk nomor ini.' });
-  }
-
-  if (Date.now() > otpInfo.expires_at) {
-    return res.status(400).json({ error: 'Kode OTP sudah kedaluwarsa.' });
-  }
-
-  if (otpInfo.code !== code.trim()) {
-    return res.status(400).json({ error: 'Kode OTP salah.' });
-  }
-
-  // Register verified user
-  if (useSupabase) {
-    try {
-      const { error: upsertErr } = await supabase
-        .from('users')
-        .upsert({ phone: cleanPhone, verified: true, verified_at: new Date().toISOString() });
-      if (upsertErr) throw upsertErr;
-
-      // Delete OTP
-      await supabase.from('otps').delete().eq('phone', cleanPhone);
-    } catch (err) {
-      log(`[Supabase Error] Gagal menyimpan user terverifikasi: ${err.message}`);
-      return res.status(500).json({ error: 'Gagal memverifikasi di Supabase.' });
-    }
-  } else {
-    const db = readDB();
-    db.users = db.users || {};
-    db.users[cleanPhone] = {
-      phone: cleanPhone,
-      verified: true,
-      verifiedAt: new Date().toISOString()
-    };
-    delete db.otps[cleanPhone];
-    writeDB(db);
-  }
-
-  log(`Nomor ${cleanPhone} berhasil diverifikasi.`);
-  res.json({ success: true, message: 'Nomor telepon berhasil diverifikasi.' });
-});
-
-/**
- * Endpoint: Get verification status
- */
-app.post('/api/whatsapp/status', async (req, res) => {
-  const { phone } = req.body;
-  if (!phone) {
-    return res.status(400).json({ error: 'Nomor telepon diperlukan.' });
-  }
-
-  let cleanPhone = phone.replace(/[^0-9]/g, '');
-  if (cleanPhone.startsWith('0')) {
-    cleanPhone = '62' + cleanPhone.slice(1);
-  }
-
-  let verified = false;
-
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('verified')
-        .eq('phone', cleanPhone)
-        .single();
-      if (error && error.code !== 'PGRST116') throw error;
-      verified = !!data?.verified;
-    } catch (err) {
-      log(`[Supabase Error] Gagal cek status verifikasi: ${err.message}. Fallback ke database.json`);
-      const db = readDB();
-      verified = !!db.users?.[cleanPhone]?.verified;
-    }
-  } else {
-    const db = readDB();
-    verified = !!db.users?.[cleanPhone]?.verified;
-  }
-
-  res.json({ verified });
-});
-
-/**
- * Endpoint: Get pending reviews (polling)
- */
-app.get('/api/whatsapp/pending-reviews', async (req, res) => {
-  const { phone } = req.query;
-  if (!phone) {
-    return res.status(400).json({ error: 'Nomor telepon diperlukan.' });
-  }
-
-  let cleanPhone = phone.replace(/[^0-9]/g, '');
-  if (cleanPhone.startsWith('0')) {
-    cleanPhone = '62' + cleanPhone.slice(1);
-  }
-
-  let review = null;
-
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('pending_reviews')
-        .select('*')
-        .eq('phone', cleanPhone)
-        .single();
-      if (error && error.code !== 'PGRST116') throw error;
-      
-      // Map postgres snake_case back to frontend camelCase
-      if (data) {
-        review = {
-          keywordId: data.keyword_id,
-          keyword: data.keyword,
-          geo: data.geo,
-          ln: data.ln,
-          clientName: data.client_name,
-          cmsType: data.cms_type,
-          telegramChatId: data.telegram_chat_id,
-          n8nUrl: data.n8n_url,
-          article: data.article,
-          status: data.status,
-          createdAt: data.created_at,
-          draftUrl: data.draft_url
-        };
-      }
-    } catch (err) {
-      log(`[Supabase Error] Gagal fetch pending review: ${err.message}. Fallback ke database.json`);
-      const db = readDB();
-      review = db.pending_reviews?.[cleanPhone] || null;
-    }
-  } else {
-    const db = readDB();
-    review = db.pending_reviews?.[cleanPhone] || null;
-  }
-
-  res.json({ review });
-});
-
-/**
- * Endpoint: Delete pending review after frontend consumes update
- */
-app.delete('/api/whatsapp/pending-reviews', async (req, res) => {
-  const { phone, keywordId } = req.query;
-  if (!phone) {
-    return res.status(400).json({ error: 'Nomor telepon diperlukan.' });
-  }
-
-  let cleanPhone = phone.replace(/[^0-9]/g, '');
-  if (cleanPhone.startsWith('0')) {
-    cleanPhone = '62' + cleanPhone.slice(1);
-  }
-
-  let deleteSuccess = false;
-
-  if (supabase) {
-    try {
-      let query = supabase.from('pending_reviews').delete().eq('phone', cleanPhone);
-      if (keywordId) {
-        query = query.eq('keyword_id', keywordId);
-      }
-      const { error } = await query;
-      if (error) throw error;
-      deleteSuccess = true;
-    } catch (err) {
-      log(`[Supabase Error] Gagal menghapus pending review: ${err.message}. Fallback ke database.json`);
-    }
-  }
-
-  if (!deleteSuccess) {
-    const db = readDB();
-    const review = db.pending_reviews?.[cleanPhone];
-    if (review && (!keywordId || review.keywordId.toString() === keywordId.toString())) {
-      delete db.pending_reviews[cleanPhone];
-      writeDB(db);
-      deleteSuccess = true;
-    }
-  }
-
-  if (deleteSuccess) {
-    log(`Menghapus data review untuk ${cleanPhone} karena proses selesai.`);
-    return res.json({ success: true, message: 'Review cleared.' });
-  }
-  
-  res.json({ success: false, message: 'Review tidak ditemukan.' });
-});
-
-/**
- * Endpoint: Run Keyword Automation
- */
-app.post('/api/automation/run', async (req, res) => {
-  const { keyword, Geo, Ln, Client_Name, CMS_Type, Telegram_Chat_ID, n8nUrl: customN8nUrl, waApprover, waPhone, projectId, studioUrl, authToken } = req.body;
-  
-  log(`Menerima trigger automasi kata kunci: "${keyword}"`);
-  
-  let targetUrl = process.env.N8N_URL_RUN;
-  if (customN8nUrl && customN8nUrl.trim()) {
-    targetUrl = customN8nUrl;
-  }
-
-  let cleanPhone = null;
-  if (waPhone) {
-    cleanPhone = waPhone.replace(/[^0-9]/g, '');
-    if (cleanPhone.startsWith('0')) {
-      cleanPhone = '62' + cleanPhone.slice(1);
-    }
-  }
-
-  if (!targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '') {
-    log(`[Error] Target URL trigger n8n tidak terkonfigurasi.`);
-    return res.status(400).json({
-      success: false,
-      message: 'Automasi n8n tidak dikonfigurasi. Harap tentukan URL trigger n8n di pengaturan.'
-    });
-  }
-
-  log(`Mem-forward request ke n8n: ${targetUrl}`);
-
+async function generateFor(user, k) {
+  const plan = planOf(user);
+  const used = await usageOf(user.id);
+  if (used >= plan.monthlyArticles) throw Object.assign(new Error(`Kuota ${plan.name} bulan ini habis (${plan.monthlyArticles} artikel). Upgrade ke Pro untuk melanjutkan.`), { status: 402 });
+  await db.update('keywords', { id: k.id }, { status: 'AI Writing...', error: '' });
   try {
-    const response = await fetch(targetUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        keyword,
-        Geo,
-        Ln,
-        Client_Name,
-        CMS_Type,
-        Telegram_Chat_ID,
-        projectId,
-        authToken
-      })
-    });
-
-    log(`Response n8n status: ${response.status}`);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      log(`[Error n8n] ${errorText}`);
-      throw new Error(getFriendlyN8nError(errorText, 'n8n failed'));
-    }
-
-    const responseData = await response.json();
-    log(`[Sukses] Berhasil menerima draf dari n8n.`);
-
-    let articlePayload = null;
-    const item = Array.isArray(responseData) ? responseData[0] : responseData;
-    articlePayload = item?.article || item?.json?.article || item;
-
-    // Check if the workflow finished successfully and generated/published an article
-    const draftUrl = responseData?.draftEditUrl || responseData?.json?.draftEditUrl || item?.draftEditUrl || item?.json?.draftEditUrl;
-    if ((!articlePayload || (!articlePayload.title && !articlePayload.bodyMarkdown)) && !draftUrl) {
-      log(`[Warning] Workflow n8n berhenti awal atau tidak menghasilkan draf.`);
-      return res.status(422).json({
-        success: false,
-        message: 'Kriteria kata kunci tidak memenuhi syarat (Workflow n8n berhenti awal, misal: pencarian volume rendah atau tidak lolos penyaringan kecocokan kata kunci).'
-      });
-    }
-
-    if (articlePayload) {
-      articlePayload.projectId = projectId || '';
-      articlePayload.authToken = authToken || '';
-    }
-
-    if (waApprover && cleanPhone && articlePayload) {
-      let savedDb = false;
-      if (supabase) {
-        try {
-          const { error } = await supabase
-            .from('pending_reviews')
-            .upsert({
-              phone: cleanPhone,
-              keyword_id: Date.now(),
-              keyword,
-              geo: Geo,
-              ln: Ln,
-              client_name: Client_Name,
-              cms_type: CMS_Type,
-              telegram_chat_id: Telegram_Chat_ID || '',
-              n8n_url: customN8nUrl || '',
-              article: articlePayload,
-              status: 'pending',
-              created_at: new Date().toISOString(),
-              draft_url: draftUrl || ''
-            });
-          if (error) throw error;
-          savedDb = true;
-        } catch (err) {
-          log(`[Supabase Error] Gagal upsert pending review: ${err.message}. Fallback ke database.json`);
-        }
-      }
-
-      if (!savedDb) {
-        const db = readDB();
-        db.pending_reviews = db.pending_reviews || {};
-        db.pending_reviews[cleanPhone] = {
-          keywordId: Date.now(),
-          keyword,
-          geo: Geo,
-          ln: Ln,
-          clientName: Client_Name,
-          cmsType: CMS_Type,
-          telegramChatId: Telegram_Chat_ID || '',
-          n8nUrl: customN8nUrl || '',
-          article: articlePayload,
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-          draftUrl: draftUrl || ''
-        };
-        writeDB(db);
-      }
-
-      const msg = `[Supermat Approval]
-Draf artikel baru telah siap untuk ditinjau!
-
-Kata Kunci: "${keyword}"
-Judul: "${articlePayload.title}"
-Platform CMS: ${CMS_Type.toUpperCase()}
-
-Ketik *SETUJU* untuk mempublikasikan langsung ke CMS Anda, atau ketik *REVISI* untuk menulis ulang artikel ini.`;
-
-      await sendWhatsAppMessage(cleanPhone, msg);
-
-      return res.json({
-        ...responseData,
-        waPending: true,
-        status: 'Review Ready',
-        article: articlePayload
-      });
-    }
-
-    res.json(responseData);
-  } catch (error) {
-    log(`[Error Fetch] Gagal menghubungi n8n: ${error.message}`);
-    return res.status(500).json({
-      success: false,
-      message: `Gagal memproses automasi n8n: ${error.message}`
-    });
+    const out = await callN8n(N8N_URL_RUN, { keyword: k.keyword, Geo: k.geo, Ln: k.ln, Client_Name: user.brand_name, niche: user.niche, requestId: k.id });
+    const article = out.article;
+    return await db.update('keywords', { id: k.id }, { article, volume: article.searchVolume || 0, difficulty: article.difficulty, status: 'Review Ready', last_run_at: new Date().toISOString(), next_run_at: nextRun(k.schedule) });
+  } catch (e) {
+    await db.update('keywords', { id: k.id }, { status: 'Error', error: e.message, last_run_at: new Date().toISOString(), next_run_at: nextRun(k.schedule) });
+    throw e;
   }
-});
-
-/**
- * Endpoint: Publish Approved Draft (Manual Web Dashboard)
- */
-app.post('/api/automation/publish', async (req, res) => {
-  log(`Menerima request pemublikasian draf artikel.`);
-  
-  const { article, clientName, telegramChatId, cmsType, n8nUrl: customN8nUrl, waPhone, projectId, studioUrl, authToken, draftDocId } = req.body;
-
-  // Resolve target publish webhook
-  let targetUrl = process.env.N8N_URL_PUBLISH;
-  if (customN8nUrl && customN8nUrl.trim()) {
-    targetUrl = customN8nUrl.replace('supermat-trigger', 'supermat-publish');
-  }
-
-  // Clear pending review if waPhone is provided
-  if (waPhone) {
-    let cleanPhone = waPhone.replace(/[^0-9]/g, '');
-    if (cleanPhone.startsWith('0')) {
-      cleanPhone = '62' + cleanPhone.slice(1);
-    }
-
-    if (supabase) {
-      try {
-        await supabase.from('pending_reviews').delete().eq('phone', cleanPhone);
-      } catch (err) {
-        log(`[Supabase Error] Gagal hapus pending review: ${err.message}. Fallback ke database.json`);
-        const db = readDB();
-        if (db.pending_reviews?.[cleanPhone]) {
-          delete db.pending_reviews[cleanPhone];
-          writeDB(db);
-        }
-      }
-    } else {
-      const db = readDB();
-      if (db.pending_reviews?.[cleanPhone]) {
-        delete db.pending_reviews[cleanPhone];
-        writeDB(db);
-      }
-    }
-    log(`Menghapus pending review untuk ${cleanPhone} karena dipublish via Web.`);
-  }
-
-  if (!targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '') {
-    log(`[Error] Target URL publish n8n tidak terkonfigurasi.`);
-    return res.status(400).json({
-      success: false,
-      message: 'Automasi n8n untuk publish tidak terkonfigurasi. Harap atur N8N_URL_PUBLISH di Dashboard Vercel / file .env.'
-    });
-  }
-
-  log(`Mem-forward postingan ke n8n publish: ${targetUrl}`);
-
+}
+async function publishFor(user, k, action, articleOverride) {
+  const conn = await db.findOne('cms_connections', { user_id: user.id, cms_type: k.cms_type });
+  if (!conn) throw Object.assign(new Error(`Kredensial ${k.cms_type} belum disimpan di Pengaturan CMS.`), { status: 400 });
+  const article = articleOverride ? { ...(k.article || {}), ...articleOverride } : k.article;
+  const useExisting = !!k.post_id && !articleOverride; // publish draf yang sudah ada tanpa perubahan konten
+  const body = { cmsType: k.cms_type, action, cms: { [k.cms_type]: conn.config }, article: useExisting ? undefined : article, postId: k.post_id || '', clientName: user.brand_name, requestId: k.id };
   try {
-    const response = await fetch(targetUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        clientName,
-        telegramChatId,
-        cmsType,
-        article,
-        projectId,
-        authToken,
-        draftDocId
-      })
-    });
-
-    log(`Response n8n publish status: ${response.status}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      log(`[Error n8n] ${errorText}`);
-      throw new Error(getFriendlyN8nError(errorText, 'n8n publish failed'));
-    }
-
-    const data = await response.json();
-    log(`[Sukses] Artikel berhasil dipublikasikan via n8n.`);
-    res.json(data);
-  } catch (error) {
-    log(`[Error Fetch] Gagal menghubungi n8n publish: ${error.message}`);
-    return res.status(500).json({
-      success: false,
-      message: `Gagal mempublikasikan draf artikel via n8n: ${error.message}`
-    });
+    const out = await callN8n(N8N_URL_PUBLISH, body);
+    const status = out.postStatus === 'publish' ? 'Published' : 'Draft Created';
+    return await db.update('keywords', { id: k.id }, { article, status, post_id: out.postId || k.post_id, draft_url: out.draftEditUrl || k.draft_url, public_url: out.publicUrl || (out.postStatus === 'publish' ? k.public_url : ''), post_status: out.postStatus, error: '' });
+  } catch (e) {
+    await db.update('keywords', { id: k.id }, { article, status: k.article ? 'Review Ready' : k.status, error: e.message });
+    throw e;
   }
-});
+}
+const webApproverOn = (u) => u.plan === 'premium' && u.web_approver !== false;
 
-/**
- * Endpoint: Fonnte Webhook
- */
-app.post('/api/whatsapp/webhook', async (req, res) => {
-  const { sender, message } = req.body;
-  
-  log(`Webhook Fonnte menerima pesan dari ${sender}: "${message}"`);
-  
-  if (!sender || !message) {
-    return res.status(400).json({ error: 'Sender and message are required.' });
+app.post('/api/keywords/:id/run', auth, wrap(async (req, res) => {
+  const k = await db.findOne('keywords', { id: req.params.id, user_id: req.user.id }); if (!k) throw Object.assign(new Error('Tidak ditemukan.'), { status: 404 });
+  let row = await generateFor(req.user, k);
+  if (!webApproverOn(req.user)) {
+    // Free (atau Web Approver mati): langsung simpan sebagai DRAF di CMS, tanpa review
+    try { row = await publishFor(req.user, row, 'draft'); } catch (e) { row = await db.findOne('keywords', { id: k.id }); row.error = e.message; }
   }
+  res.json({ keyword: kwPublic(row) });
+}));
+app.post('/api/keywords/:id/publish', auth, wrap(async (req, res) => {
+  const k = await db.findOne('keywords', { id: req.params.id, user_id: req.user.id }); if (!k) throw Object.assign(new Error('Tidak ditemukan.'), { status: 404 });
+  if (!k.article && !k.post_id) throw Object.assign(new Error('Belum ada artikel. Jalankan dulu.'), { status: 400 });
+  const action = req.body.action === 'publish' ? 'publish' : 'draft';
+  const row = await publishFor(req.user, k, action, req.body.article || null);
+  res.json({ keyword: kwPublic(row) });
+}));
 
-  let cleanSender = sender.replace(/[^0-9]/g, '');
-  if (cleanSender.startsWith('0')) {
-    cleanSender = '62' + cleanSender.slice(1);
+// ---------- Billing (dummy) ----------
+app.get('/api/billing', auth, wrap(async (req, res) => {
+  const subs = await db.findMany('subscriptions', { user_id: req.user.id }, { orderBy: 'created_at' });
+  res.json({ plans: Object.values(PLANS), current: planOf(req.user), subscription: subs[0] || null, history: subs.slice(0, 10) });
+}));
+app.post('/api/billing/checkout', auth, wrap(async (req, res) => {
+  const plan = PLANS[req.body.plan] ? req.body.plan : 'premium';
+  if (plan === 'free') throw Object.assign(new Error('Pilih paket berbayar.'), { status: 400 });
+  const method = String(req.body.method || 'qris');
+  const sub = await db.insert('subscriptions', { user_id: req.user.id, plan, status: 'active', method, amount: PLANS[plan].price, invoice_no: 'INV-' + Date.now().toString(36).toUpperCase(), started_at: new Date().toISOString(), ends_at: new Date(Date.now() + 30 * 86400e3).toISOString(), dummy: true });
+  const u = await db.update('accounts', { id: req.user.id }, { plan });
+  res.json({ user: publicUser(u), subscription: sub, message: 'Pembayaran simulasi berhasil. Paket Pro aktif 30 hari.' });
+}));
+app.post('/api/billing/cancel', auth, wrap(async (req, res) => {
+  const subs = await db.findMany('subscriptions', { user_id: req.user.id, status: 'active' });
+  for (const s of subs) await db.update('subscriptions', { id: s.id }, { status: 'cancelled' });
+  const u = await db.update('accounts', { id: req.user.id }, { plan: 'free' });
+  res.json({ user: publicUser(u) });
+}));
+
+// ---------- 3Our Public API (API key per user) ----------
+app.post('/api/v1/articles/generate', apiKeyAuth, wrap(async (req, res) => {
+  const b = req.body || {}; const keyword = String(b.keyword || '').trim();
+  if (!keyword) throw Object.assign(new Error('keyword wajib diisi.'), { status: 400 });
+  const k = await db.insert('keywords', { user_id: req.user.id, keyword, geo: String(b.geo || 'ID').toUpperCase(), ln: String(b.ln || 'id').toLowerCase(), cms_type: String(b.cmsType || 'wordpress').toLowerCase(), status: 'Pending', schedule: 'immediate', source: 'api' });
+  const row = await generateFor(req.user, k);
+  res.json({ status: 'ok', id: row.id, article: row.article });
+}));
+app.post('/api/v1/articles/:id/publish', apiKeyAuth, wrap(async (req, res) => {
+  const k = await db.findOne('keywords', { id: req.params.id, user_id: req.user.id }); if (!k) throw Object.assign(new Error('Artikel tidak ditemukan.'), { status: 404 });
+  const row = await publishFor(req.user, k, req.body.action === 'publish' ? 'publish' : 'draft', req.body.article || null);
+  res.json({ status: 'ok', id: row.id, postId: row.post_id, draftEditUrl: row.draft_url, publicUrl: row.public_url, postStatus: row.post_status });
+}));
+app.get('/api/v1/articles', apiKeyAuth, wrap(async (req, res) => res.json({ status: 'ok', articles: (await db.findMany('keywords', { user_id: req.user.id }, { orderBy: 'created_at' })).map(kwPublic) })));
+
+// ---------- Cron: jadwal harian/mingguan (Vercel Cron → GET /api/cron/run-scheduled) ----------
+app.get('/api/cron/run-scheduled', wrap(async (req, res) => {
+  const given = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '') || String(req.query.secret || '');
+  if (!CRON_SECRET || given !== CRON_SECRET) return res.status(401).json({ error: 'unauthorized' });
+  const now = new Date().toISOString();
+  const all = await db.findMany('keywords', {});
+  const due = all.filter(k => ['daily', 'weekly'].includes(k.schedule) && k.next_run_at && k.next_run_at <= now).slice(0, 20);
+  const results = [];
+  for (const k of due) {
+    const user = await db.findOne('accounts', { id: k.user_id });
+    if (!user || user.plan !== 'premium') { await db.update('keywords', { id: k.id }, { next_run_at: nextRun(k.schedule) }); results.push({ id: k.id, skipped: 'plan' }); continue; }
+    try { let row = await generateFor(user, k); if (!webApproverOn(user)) row = await publishFor(user, row, 'draft'); results.push({ id: k.id, status: row.status }); }
+    catch (e) { results.push({ id: k.id, error: e.message }); }
   }
+  res.json({ ran: results.length, results });
+}));
 
-  let user = null;
-  let pendingReview = null;
-  let useSupabase = false;
+app.use((req, res) => res.status(404).json({ error: 'Route tidak ditemukan.' }));
 
-  if (supabase) {
-    try {
-      const { data: userData, error: userErr } = await supabase
-        .from('users')
-        .select('*')
-        .eq('phone', cleanSender)
-        .single();
-      if (userErr && userErr.code !== 'PGRST116') throw userErr;
-      user = userData;
-
-      const { data: reviewData, error: reviewErr } = await supabase
-        .from('pending_reviews')
-        .select('*')
-        .eq('phone', cleanSender)
-        .single();
-      if (reviewErr && reviewErr.code !== 'PGRST116') throw reviewErr;
-      
-      if (reviewData) {
-        pendingReview = {
-          keywordId: reviewData.keyword_id,
-          keyword: reviewData.keyword,
-          geo: reviewData.geo,
-          ln: reviewData.ln,
-          clientName: reviewData.client_name,
-          cmsType: reviewData.cms_type,
-          telegramChatId: reviewData.telegram_chat_id,
-          n8nUrl: reviewData.n8n_url,
-          article: reviewData.article,
-          status: reviewData.status,
-          createdAt: reviewData.created_at,
-          draftUrl: reviewData.draft_url
-        };
-      }
-      useSupabase = true;
-    } catch (err) {
-      log(`[Supabase Error] Gagal fetch user/review di webhook: ${err.message}. Fallback ke database.json`);
-    }
-  }
-
-  if (!useSupabase) {
-    const db = readDB();
-    user = db.users?.[cleanSender];
-    pendingReview = db.pending_reviews?.[cleanSender];
-  }
-  
-  // 1. Verify sender
-  if (!user) {
-    log(`[Webhook Warning] Pengirim ${cleanSender} tidak terdaftar.`);
-    return res.json({ status: false, reason: 'Sender not registered' });
-  }
-
-  // 2. Check pending reviews
-  if (!pendingReview || pendingReview.status === 'published' || pendingReview.status === 'revising') {
-    log(`[Webhook Message] Tidak ada draf aktif untuk ${cleanSender}.`);
-    await sendWhatsAppMessage(cleanSender, `Halo! Saat ini tidak ada draf artikel aktif yang menunggu persetujuan Anda di Supermat.`);
-    return res.json({ status: true, message: 'No active review found.' });
-  }
-
-  const replyText = message.trim().toUpperCase();
-
-  if (replyText === 'SETUJU') {
-    log(`[Webhook Approval] Pengirim menyetujui artikel "${pendingReview.keyword}"`);
-    
-    // Update status to publishing
-    if (useSupabase) {
-      await supabase.from('pending_reviews').update({ status: 'publishing' }).eq('phone', cleanSender);
-    } else {
-      const db = readDB();
-      if (db.pending_reviews?.[cleanSender]) {
-        db.pending_reviews[cleanSender].status = 'publishing';
-        writeDB(db);
-      }
-    }
-
-    let targetUrl = process.env.N8N_URL_PUBLISH || pendingReview.n8nUrl?.replace('supermat-trigger', 'supermat-publish');
-    if (!targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '') {
-      log(`[Error] Target URL publish n8n tidak terkonfigurasi.`);
-      await sendWhatsAppMessage(cleanSender, `⚠️ Gagal mempublikasikan: URL publish n8n tidak terkonfigurasi.`);
-      return res.json({ status: false, error: 'Publish URL not configured' });
-    }
-
-    let draftDocId = '';
-    const draftUrl = pendingReview.draftUrl || '';
-    if (draftUrl.includes(';')) {
-      draftDocId = draftUrl.split(';').pop();
-    } else if (draftUrl.includes('post/')) {
-      draftDocId = draftUrl.split('post/').pop();
-    }
-
-    // Real publish to n8n (async)
-    fetch(targetUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        clientName: pendingReview.clientName,
-        telegramChatId: pendingReview.telegramChatId,
-        cmsType: pendingReview.cmsType,
-        projectId: pendingReview.article?.projectId || '',
-        authToken: pendingReview.article?.authToken || '',
-        article: pendingReview.article,
-        draftDocId: draftDocId
-      })
-    })
-    .then(async (n8nRes) => {
-      if (!n8nRes.ok) {
-        const errorText = await n8nRes.text();
-        throw new Error(getFriendlyN8nError(errorText, `n8n publish failed with status ${n8nRes.status}`));
-      }
-      const responseData = await n8nRes.json();
-      const draftUrl = responseData?.draftEditUrl || responseData?.json?.draftEditUrl || `https://3ourasia.id/wp-admin/post.php?post=${Math.floor(Math.random()*1000)}&action=edit`;
-      
-      if (useSupabase) {
-        await supabase.from('pending_reviews').update({ status: 'published', draft_url: draftUrl }).eq('phone', cleanSender);
-      } else {
-        const dbUpdate = readDB();
-        if (dbUpdate.pending_reviews?.[cleanSender]) {
-          dbUpdate.pending_reviews[cleanSender].status = 'published';
-          dbUpdate.pending_reviews[cleanSender].draftUrl = draftUrl;
-          writeDB(dbUpdate);
-        }
-      }
-
-      await sendWhatsAppMessage(cleanSender, `✓ Draf artikel "${pendingReview.article.title}" berhasil dipublikasikan ke ${pendingReview.cmsType.toUpperCase()}!
-Tautan editor: ${draftUrl}`);
-    })
-    .catch(async (err) => {
-      log(`[Error webhook publish] ${err.message}`);
-      await sendWhatsAppMessage(cleanSender, `⚠️ Gagal mempublikasikan draf artikel ke CMS via n8n: ${err.message}`);
-    });
-
-    res.json({ status: true, message: 'Publishing initiated.' });
-
-  } else if (replyText === 'REVISI') {
-    log(`[Webhook Revision] Pengirim meminta revisi artikel "${pendingReview.keyword}"`);
-    
-    if (useSupabase) {
-      await supabase.from('pending_reviews').update({ status: 'revising' }).eq('phone', cleanSender);
-    } else {
-      const db = readDB();
-      if (db.pending_reviews?.[cleanSender]) {
-        db.pending_reviews[cleanSender].status = 'revising';
-        writeDB(db);
-      }
-    }
-
-    await sendWhatsAppMessage(cleanSender, `↻ Permintaan revisi diterima. Menulis ulang artikel untuk kata kunci "${pendingReview.keyword}"...`);
-
-    let targetUrl = process.env.N8N_URL_RUN || pendingReview.n8nUrl;
-    if (!targetUrl || targetUrl.includes('placeholder') || targetUrl.trim() === '') {
-      log(`[Error] Target URL trigger n8n tidak terkonfigurasi.`);
-      await sendWhatsAppMessage(cleanSender, `⚠️ Gagal memproses revisi: URL trigger n8n tidak terkonfigurasi.`);
-      return res.json({ status: false, error: 'Trigger URL not configured' });
-    }
-
-    // Real trigger
-    fetch(targetUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        keyword: pendingReview.keyword,
-        Geo: pendingReview.geo,
-        Ln: pendingReview.ln,
-        Client_Name: pendingReview.clientName,
-        CMS_Type: pendingReview.cmsType,
-        Telegram_Chat_ID: pendingReview.telegramChatId
-      })
-    })
-    .then(async (n8nRes) => {
-      if (!n8nRes.ok) throw new Error(`n8n rewrite trigger failed`);
-      const responseData = await n8nRes.json();
-      
-      let articlePayload = null;
-      const item = Array.isArray(responseData) ? responseData[0] : responseData;
-      articlePayload = item?.article || item?.json?.article || item;
-
-      if (articlePayload) {
-        if (useSupabase) {
-          await supabase
-            .from('pending_reviews')
-            .update({ article: articlePayload, status: 'pending', created_at: new Date().toISOString() })
-            .eq('phone', cleanSender);
-        } else {
-          const dbUpdate = readDB();
-          if (dbUpdate.pending_reviews?.[cleanSender]) {
-            dbUpdate.pending_reviews[cleanSender] = {
-              ...dbUpdate.pending_reviews[cleanSender],
-              article: articlePayload,
-              status: 'pending',
-              createdAt: new Date().toISOString()
-            };
-            writeDB(dbUpdate);
-          }
-        }
-
-        await sendWhatsAppMessage(cleanSender, `[Supermat Approval - Revisi Selesai]
-Draf artikel baru hasil revisi telah siap!
-
-Kata Kunci: "${pendingReview.keyword}"
-Judul: "${articlePayload.title}"
-
-Ketik *SETUJU* untuk mempublikasikan, atau *REVISI* untuk menulis ulang.`);
-      }
-    })
-    .catch(async (err) => {
-      log(`[Error webhook revision trigger] ${err.message}`);
-      await sendWhatsAppMessage(cleanSender, `⚠️ Gagal menulis ulang artikel via n8n: ${err.message}`);
-    });
-
-    res.json({ status: true, message: 'Revision initiated.' });
-  } else {
-    log(`[Webhook Info] Pesan tidak dikenal dari ${cleanSender}: "${message}"`);
-    await sendWhatsAppMessage(cleanSender, `Format pesan salah. Balas dengan *SETUJU* untuk mempublikasikan draf artikel, atau *REVISI* untuk menulis ulang.`);
-    res.json({ status: true, message: 'Help guide sent.' });
-  }
-});
-
-/**
- * Endpoints: Scheduled Keywords Management (Replaces Google Sheets)
- */
-
-// Helper to read scheduled keywords from database
-const getScheduledKeywordsFromDb = async (phone) => {
-  if (supabase) {
-    try {
-      let query = supabase.from('scheduled_keywords').select('*');
-      if (phone) {
-        query = query.eq('phone', phone);
-      }
-      const { data, error } = await query;
-      if (error) {
-        if (error.code === 'PGRST116' || error.message.includes('relation "scheduled_keywords" does not exist')) {
-          log(`[Supabase Info] Tabel "scheduled_keywords" belum dibuat. Silakan buat di SQL Editor Supabase Anda:\n\n` +
-              `CREATE TABLE scheduled_keywords (\n` +
-              `  id bigint primary key generated always as identity,\n` +
-              `  keyword text not null,\n` +
-              `  geo text default 'ID',\n` +
-              `  ln text default 'id',\n` +
-              `  cms text default 'sanity',\n` +
-              `  schedule text default 'daily',\n` +
-              `  phone text,\n` +
-              `  created_at timestamp with time zone default timezone('utc'::text, now())\n` +
-              `);`);
-        } else {
-          throw error;
-        }
-      } else if (data) {
-        return data;
-      }
-    } catch (err) {
-      log(`[Supabase Error] Gagal membaca scheduled_keywords: ${err.message}`);
-    }
-  }
-
-  const db = readDB();
-  db.scheduled_keywords = db.scheduled_keywords || [];
-  if (phone) {
-    return db.scheduled_keywords.filter(k => k.phone === phone);
-  }
-  return db.scheduled_keywords;
-};
-
-// GET /api/automation/schedule
-app.get('/api/automation/schedule', async (req, res) => {
-  const { phone } = req.query;
-  const list = await getScheduledKeywordsFromDb(phone);
-  res.json(list);
-});
-
-// POST /api/automation/schedule
-app.post('/api/automation/schedule', async (req, res) => {
-  const { keyword, geo, ln, cms, schedule, phone } = req.body;
-  if (!keyword) {
-    return res.status(400).json({ error: 'Keyword required.' });
-  }
-
-  const newItem = {
-    id: Date.now(),
-    keyword: keyword.trim(),
-    geo: geo || 'ID',
-    ln: ln || 'id',
-    cms: cms || 'sanity',
-    schedule: schedule || 'daily',
-    phone: phone || '',
-    created_at: new Date().toISOString()
-  };
-
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('scheduled_keywords')
-        .insert([{
-          keyword: newItem.keyword,
-          geo: newItem.geo,
-          ln: newItem.ln,
-          cms: newItem.cms,
-          schedule: newItem.schedule,
-          phone: newItem.phone
-        }])
-        .select();
-      
-      if (!error && data && data[0]) {
-        log(`[Supabase] Berhasil menyimpan keyword terjadwal: "${newItem.keyword}"`);
-        return res.json({ success: true, item: data[0] });
-      }
-    } catch (err) {
-      log(`[Supabase Error] Gagal simpan scheduled_keyword: ${err.message}`);
-    }
-  }
-
-  const db = readDB();
-  db.scheduled_keywords = db.scheduled_keywords || [];
-  db.scheduled_keywords.push(newItem);
-  writeDB(db);
-  log(`[Database] Berhasil menyimpan keyword terjadwal secara lokal: "${newItem.keyword}"`);
-  res.json({ success: true, item: newItem });
-});
-
-// DELETE /api/automation/schedule/:id
-app.delete('/api/automation/schedule/:id', async (req, res) => {
-  const { id } = req.params;
-  const numId = Number(id);
-
-  if (supabase) {
-    try {
-      const { error } = await supabase
-        .from('scheduled_keywords')
-        .delete()
-        .or(`id.eq.${id},id.eq.${numId || 0}`);
-      
-      if (!error) {
-        log(`[Supabase] Berhasil menghapus keyword terjadwal ID: ${id}`);
-        return res.json({ success: true });
-      }
-    } catch (err) {
-      log(`[Supabase Error] Gagal hapus scheduled_keyword: ${err.message}`);
-    }
-  }
-
-  const db = readDB();
-  db.scheduled_keywords = db.scheduled_keywords || [];
-  db.scheduled_keywords = db.scheduled_keywords.filter(k => k.id !== numId && k.id.toString() !== id.toString());
-  writeDB(db);
-  log(`[Database] Berhasil menghapus keyword terjadwal secara lokal ID: ${id}`);
-  res.json({ success: true });
-});
-
-app.listen(PORT, () => {
-  log(`Server Express Backend running on http://localhost:${PORT}`);
-});
-
+if (!process.env.VERCEL) app.listen(PORT, () => log(`Supermat backend di http://localhost:${PORT} (db: ${dbMode}, n8n: ${N8N_BASE_URL})`));
 export default app;
