@@ -1,6 +1,7 @@
 // 3Our Supermat API — validasi API key & normalisasi input untuk endpoint PUBLISH
 // Body: { cmsType: 'wordpress'|'wix'|'sanity', action: 'draft'|'publish', cms: {...kredensial user...}, article: {...}, postId?: '' }
-const DEFAULT_KEYS = ['SPM-3OUR-LIVE-7Q4K-2026'];
+// Key asli HANYA diisi di node n8n (jangan di-commit). Placeholder di bawah wajib diganti setelah import.
+const DEFAULT_KEYS = ['GANTI-DENGAN-KEY-RAHASIA'];
 let keys = DEFAULT_KEYS;
 try { const e = String($env.SUPERMAT_API_KEYS || '').trim(); if (e) keys = e.split(',').map(s => s.trim()).filter(Boolean); } catch (err) {}
 
