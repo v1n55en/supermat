@@ -15,8 +15,9 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET || 'ganti-di-env-JWT_SECRET';
 const N8N_BASE_URL = (process.env.N8N_BASE_URL || 'https://n8n.3ourasia.id').replace(/\/+$/, '');
-const N8N_URL_RUN = process.env.N8N_URL_RUN || `${N8N_BASE_URL}/webhook/supermat-trigger`;
-const N8N_URL_PUBLISH = process.env.N8N_URL_PUBLISH || `${N8N_BASE_URL}/webhook/supermat-publish`;
+// Override opsional (nama baru, supaya env lama N8N_URL_RUN/N8N_URL_PUBLISH dari versi v1 tidak terpakai)
+const N8N_URL_RUN = process.env.SUPERMAT_N8N_RUN_URL || `${N8N_BASE_URL}/webhook/supermat-trigger`;
+const N8N_URL_PUBLISH = process.env.SUPERMAT_N8N_PUBLISH_URL || `${N8N_BASE_URL}/webhook/supermat-publish`;
 const SUPERMAT_API_KEY = process.env.SUPERMAT_API_KEY || ''; // key 3Our untuk memanggil n8n (header X-Supermat-Key)
 const CRON_SECRET = process.env.CRON_SECRET || '';
 const FREE_MONTHLY_LIMIT = Number(process.env.FREE_MONTHLY_LIMIT || 3);

@@ -1,7 +1,10 @@
 -- Skema Supabase untuk Supermat backend v2 (jalankan di SQL Editor)
+-- Semua tabel ada di schema terpisah "supermat" supaya bisa menumpang di project Supabase yang sudah ada.
+-- Setelah menjalankan ini: Project Settings → Data API → Exposed schemas → tambahkan "supermat".
 create extension if not exists pgcrypto;
+create schema if not exists supermat;
 
-create table if not exists accounts (
+create table if not exists supermat.accounts (
   id uuid primary key default gen_random_uuid(),
   email text unique not null,
   password_hash text not null,
@@ -14,9 +17,9 @@ create table if not exists accounts (
   updated_at timestamptz
 );
 
-create table if not exists cms_connections (
+create table if not exists supermat.cms_connections (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references accounts(id) on delete cascade,
+  user_id uuid not null references supermat.accounts(id) on delete cascade,
   cms_type text not null,
   config jsonb not null default '{}'::jsonb,
   verified boolean not null default false,
@@ -26,9 +29,9 @@ create table if not exists cms_connections (
   unique (user_id, cms_type)
 );
 
-create table if not exists keywords (
+create table if not exists supermat.keywords (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references accounts(id) on delete cascade,
+  user_id uuid not null references supermat.accounts(id) on delete cascade,
   keyword text not null,
   geo text default 'ID',
   ln text default 'id',
@@ -49,12 +52,12 @@ create table if not exists keywords (
   created_at timestamptz not null default now(),
   updated_at timestamptz
 );
-create index if not exists keywords_user_idx on keywords(user_id, created_at desc);
-create index if not exists keywords_next_run_idx on keywords(next_run_at) where schedule in ('daily','weekly');
+create index if not exists keywords_user_idx on supermat.keywords(user_id, created_at desc);
+create index if not exists keywords_next_run_idx on supermat.keywords(next_run_at) where schedule in ('daily','weekly');
 
-create table if not exists subscriptions (
+create table if not exists supermat.subscriptions (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references accounts(id) on delete cascade,
+  user_id uuid not null references supermat.accounts(id) on delete cascade,
   plan text not null,
   status text not null default 'active',
   method text,
@@ -67,4 +70,12 @@ create table if not exists subscriptions (
   updated_at timestamptz
 );
 
--- Backend memakai service-role key, jadi RLS tidak wajib. Kalau diaktifkan, buat policy untuk service role.
+-- Hanya backend (service_role) yang boleh mengakses; anon/authenticated ditutup lewat RLS tanpa policy.
+alter table supermat.accounts enable row level security;
+alter table supermat.cms_connections enable row level security;
+alter table supermat.keywords enable row level security;
+alter table supermat.subscriptions enable row level security;
+grant usage on schema supermat to service_role;
+grant all on all tables in schema supermat to service_role;
+alter default privileges in schema supermat grant all on tables to service_role;
+revoke all on schema supermat from anon, authenticated;

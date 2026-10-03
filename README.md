@@ -40,13 +40,15 @@ API key yang diterima n8n: env `SUPERMAT_API_KEYS` (pisah koma) atau daftar defa
 
 Mengubah workflow: edit `automation/src/*.js` / `build-workflows.mjs`, jalankan `node automation/build-workflows.mjs`, lalu import JSON ke n8n (Import from file) dan salin ke workflow dengan id di atas (atau update node-nya langsung).
 
-### Backend (Vercel, root `backend/`)
-1. Buat project Supabase → jalankan `backend/supabase.sql` di SQL Editor.
-2. Env (lihat `backend/.env.example`): `JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_KEY` (service role), `N8N_BASE_URL`, `SUPERMAT_API_KEY`, `CRON_SECRET`, `FRONTEND_ORIGIN`.
-3. `vercel.json` sudah berisi cron harian `0 1 * * *` (08.00 WIB) → `/api/cron/run-scheduled`.
+### Backend (Vercel project `supermat-api`, root `backend/`)
+1. Database: schema `supermat` di project Supabase "Debounce WA 3Our" (`jgavqcrsolndrltadlxq`) — sudah dibuat dari `backend/supabase.sql` dan di-expose di Data API. (Free plan Supabase maksimal 2 project, jadi Supermat menumpang dengan schema terpisah.)
+2. Env config (sudah diisi): `SUPABASE_URL`, `SUPABASE_SCHEMA=supermat`, `N8N_BASE_URL`, `FRONTEND_ORIGIN`, `FREE_MONTHLY_LIMIT`.
+3. Env rahasia (isi sendiri, tipe Secret): `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`, `SUPERMAT_API_KEY`, `CRON_SECRET`.
+4. Entry function `api/index.js` (maxDuration 60 detik, karena generate artikel ±20–30 detik); `vercel.json` berisi cron harian `0 1 * * *` (08.00 WIB) → `/api/cron/run-scheduled`.
+5. Env lama v1 (`N8N_URL_RUN`, `N8N_URL_PUBLISH`, `FONNTE_TOKEN`, `SUPABASE_KEY`) tidak dipakai lagi dan boleh dihapus.
 
-### Frontend (Vercel, root `frontend/`)
-Env: `VITE_API_BASE_URL=https://<backend>.vercel.app`.
+### Frontend (Vercel project `supermat` → supermat-three.vercel.app, root `frontend/`)
+Env: `VITE_API_BASE_URL=https://supermat-api.vercel.app` (sudah ada).
 
 ## Dev lokal
 ```bash

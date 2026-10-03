@@ -11,9 +11,10 @@ const TABLES = ['accounts', 'cms_connections', 'keywords', 'subscriptions'];
 const log = (msg) => console.log(`[${new Date().toISOString()}] ${msg}`);
 
 function makeSupabase() {
-  const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_KEY;
+  const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
   if (!url || !key || url.includes('placeholder') || key.includes('placeholder')) return null;
-  try { const c = createClient(url, key, { auth: { persistSession: false } }); log(`[DB] Supabase: ${url}`); return c; } catch (e) { log(`[DB] Supabase gagal init: ${e.message}`); return null; }
+  const schema = process.env.SUPABASE_SCHEMA || 'public';
+  try { const c = createClient(url, key, { auth: { persistSession: false }, db: { schema } }); log(`[DB] Supabase: ${url} (schema ${schema})`); return c; } catch (e) { log(`[DB] Supabase gagal init: ${e.message}`); return null; }
 }
 
 // ---------- Fallback JSON (hanya untuk dev lokal; Vercel tidak menyimpan file) ----------
