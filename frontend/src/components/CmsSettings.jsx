@@ -34,12 +34,24 @@ const CMS_META = {
       { key: 'publicUrlPattern', label: 'Pola URL artikel publik (opsional)', placeholder: 'https://situsmu.com/blog/{slug}' },
     ],
   },
+  shopify: {
+    label: 'Shopify Blog', color: '#5e8e3e',
+    help: 'Buka dev.shopify.com (Dev Dashboard) → Create app → Versions: pilih scope "read_content" & "write_content" → Release → Install app ke tokomu → salin Client ID & Client Secret (Settings). Punya custom app lama? Cukup isi Admin API access token (shpat_…). Domain toko pakai format namatoko.myshopify.com.',
+    fields: [
+      { key: 'shop', label: 'Domain toko (.myshopify.com)', placeholder: 'namatoko.myshopify.com' },
+      { key: 'clientId', label: 'Client ID (app Dev Dashboard)', placeholder: 'a1b2c3...' },
+      { key: 'clientSecret', label: 'Client Secret', placeholder: 'shpss_...', secret: true },
+      { key: 'accessToken', label: 'atau Admin API access token (custom app lama)', placeholder: 'shpat_...', secret: true },
+      { key: 'blogId', label: 'Blog tujuan (opsional, handle blog)', placeholder: 'news — kosong = blog pertama' },
+      { key: 'authorName', label: 'Nama penulis (opsional)', placeholder: 'default: nama brand' },
+    ],
+  },
 };
 
 export default function CmsSettings({ me, refreshMe, goTo }) {
   const user = me.user;
   const isPremium = user.plan === 'premium';
-  const [forms, setForms] = useState({ wordpress: {}, wix: {}, sanity: {} });
+  const [forms, setForms] = useState({ wordpress: {}, wix: {}, sanity: {}, shopify: {} });
   const [state, setState] = useState({}); // type -> {busy, result}
   const [saved, setSaved] = useState({});
   const [profile, setProfile] = useState({ brandName: user.brandName || '', niche: user.niche || '' });
@@ -48,7 +60,7 @@ export default function CmsSettings({ me, refreshMe, goTo }) {
   const [rotating, setRotating] = useState(false);
 
   useEffect(() => {
-    const next = { wordpress: {}, wix: {}, sanity: {} }; const sv = {};
+    const next = { wordpress: {}, wix: {}, sanity: {}, shopify: {} }; const sv = {};
     for (const c of me.cms || []) { next[c.cmsType] = { ...c.config }; sv[c.cmsType] = c; }
     setForms(next); setSaved(sv);
   }, [me.cms]);
@@ -111,7 +123,7 @@ export default function CmsSettings({ me, refreshMe, goTo }) {
       </div>
 
       <div className="card" style={{ marginTop: '1.5rem', opacity: 0.7 }}>
-        <div style={styles.cardHead}><div style={{ ...styles.cmsIcon, backgroundColor: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.3)' }}><Globe size={18} color="#f43f5e" /></div><div style={{ flex: 1 }}><h2 style={{ margin: 0, fontSize: '1rem' }}>Webflow, Shopify Blog, Ghost</h2><span style={styles.sub}>Segera hadir — hubungi 3Our bila butuh lebih cepat.</span></div><span className="badge badge-secondary">Soon</span></div>
+        <div style={styles.cardHead}><div style={{ ...styles.cmsIcon, backgroundColor: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.3)' }}><Globe size={18} color="#f43f5e" /></div><div style={{ flex: 1 }}><h2 style={{ margin: 0, fontSize: '1rem' }}>Webflow, Ghost, Blogger</h2><span style={styles.sub}>Segera hadir — hubungi 3Our bila butuh lebih cepat.</span></div><span className="badge badge-secondary">Soon</span></div>
       </div>
 
       <div className="grid-2" style={{ marginTop: '1.5rem', alignItems: 'start' }}>
