@@ -36,7 +36,7 @@ Workflow sudah terpasang & aktif di `n8n.3ourasia.id`:
 - `Supermat Adapter: WordPress` — id `XokXcBPuDOlIexss`
 - `Supermat Adapter: Wix Blog` — id `54QOd6HkD0duCqGq`
 
-API key yang diterima n8n: env `SUPERMAT_API_KEYS` (pisah koma) atau daftar default di node **Auth & Normalize** — key asli hanya disimpan di n8n & env Vercel, **jangan ditulis di repo (repo ini publik)**. Ganti key ini di n8n **dan** env backend `SUPERMAT_API_KEY` secara bersamaan.
+API key 3Our ↔ n8n: kedua webhook memakai **Header Auth** dengan credential n8n **"Supermat API Key (Header)"** (header `X-Supermat-Key`). Nilainya hanya disimpan di credential itu dan di env Vercel `SUPERMAT_API_KEY` — keduanya harus sama. **Jangan tulis key di repo (repo ini publik).** Ganti key: edit credential di n8n → edit env di Vercel → Redeploy.
 
 Mengubah workflow: edit `automation/src/*.js` / `build-workflows.mjs`, jalankan `node automation/build-workflows.mjs`, lalu import JSON ke n8n (Import from file) dan salin ke workflow dengan id di atas (atau update node-nya langsung).
 
