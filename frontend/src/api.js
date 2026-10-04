@@ -35,5 +35,5 @@ export const GEO_OPTIONS = [
 export const LN_OPTIONS = [
   { value: 'id', label: 'id (Bahasa Indonesia)' }, { value: 'en', label: 'en (English)' }, { value: 'ms', label: 'ms (Bahasa Melayu)' },
 ];
-export const CMS_LABEL = { wordpress: 'WordPress', wix: 'Wix', sanity: 'Sanity' };
+export const CMS_LABEL = { wordpress: 'WordPress', wix: 'Wix', sanity: 'Sanity', shopify: 'Shopify' };
 export const formatIDR = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
