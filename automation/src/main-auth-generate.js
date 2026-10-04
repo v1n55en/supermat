@@ -1,15 +1,9 @@
 // 3Our Supermat API — validasi API key & normalisasi input untuk endpoint GENERATE
-// Key dibaca dari env n8n SUPERMAT_API_KEYS (pisah koma) bila ada, kalau tidak pakai daftar di bawah.
-// Key asli HANYA diisi di node n8n (jangan di-commit). Placeholder di bawah wajib diganti setelah import.
-const DEFAULT_KEYS = ['GANTI-DENGAN-KEY-RAHASIA'];
-let keys = DEFAULT_KEYS;
-try { const e = String($env.SUPERMAT_API_KEYS || '').trim(); if (e) keys = e.split(',').map(s => s.trim()).filter(Boolean); } catch (err) { /* env access diblokir -> pakai default */ }
-
+// API key (header X-Supermat-Key) divalidasi oleh node Webhook (Header Auth, credential "Supermat API Key (Header)").
+// Request tanpa key yang benar sudah ditolak 403 sebelum sampai ke node ini. Key TIDAK ditulis di kode/repo.
 const headers = $json.headers || {};
 const body = $json.body || {};
-const bearer = String(headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-const key = String(headers['x-supermat-key'] || headers['x-api-key'] || bearer || body.apiKey || '').trim();
-const ok = !!key && keys.includes(key);
+const ok = true;
 
 const keyword = String(body.keyword || body.query || '').trim();
 let statusCode = 200, error = '';
