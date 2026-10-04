@@ -21,12 +21,25 @@ const CMS_META = {
       { key: 'memberId', label: 'Member ID penulis (opsional)', placeholder: 'otomatis diambil dari post terakhir' },
     ],
   },
+  sanity: {
+    label: 'Sanity', color: '#f43f5e',
+    help: 'Buka sanity.io/manage → pilih project → API → Tokens → Add API token → izin "Editor" → salin token. Project ID ada di halaman project. Artikel disimpan sebagai dokumen (default type "post", isi di field "body" berupa Portable Text) — sesuaikan bila schema Studio-mu berbeda.',
+    fields: [
+      { key: 'projectId', label: 'Project ID', placeholder: 'abc123xy' },
+      { key: 'dataset', label: 'Dataset', placeholder: 'production' },
+      { key: 'token', label: 'API Token (izin Editor)', placeholder: 'sk...', secret: true },
+      { key: 'studioUrl', label: 'URL Sanity Studio (opsional, untuk link edit)', placeholder: 'https://namastudio.sanity.studio' },
+      { key: 'docType', label: 'Document type (opsional)', placeholder: 'post' },
+      { key: 'bodyField', label: 'Field isi artikel (opsional)', placeholder: 'body' },
+      { key: 'publicUrlPattern', label: 'Pola URL artikel publik (opsional)', placeholder: 'https://situsmu.com/blog/{slug}' },
+    ],
+  },
 };
 
 export default function CmsSettings({ me, refreshMe, goTo }) {
   const user = me.user;
   const isPremium = user.plan === 'premium';
-  const [forms, setForms] = useState({ wordpress: {}, wix: {} });
+  const [forms, setForms] = useState({ wordpress: {}, wix: {}, sanity: {} });
   const [state, setState] = useState({}); // type -> {busy, result}
   const [saved, setSaved] = useState({});
   const [profile, setProfile] = useState({ brandName: user.brandName || '', niche: user.niche || '' });
@@ -35,7 +48,7 @@ export default function CmsSettings({ me, refreshMe, goTo }) {
   const [rotating, setRotating] = useState(false);
 
   useEffect(() => {
-    const next = { wordpress: {}, wix: {} }; const sv = {};
+    const next = { wordpress: {}, wix: {}, sanity: {} }; const sv = {};
     for (const c of me.cms || []) { next[c.cmsType] = { ...c.config }; sv[c.cmsType] = c; }
     setForms(next); setSaved(sv);
   }, [me.cms]);
@@ -98,7 +111,7 @@ export default function CmsSettings({ me, refreshMe, goTo }) {
       </div>
 
       <div className="card" style={{ marginTop: '1.5rem', opacity: 0.7 }}>
-        <div style={styles.cardHead}><div style={{ ...styles.cmsIcon, backgroundColor: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.3)' }}><Globe size={18} color="#f43f5e" /></div><div style={{ flex: 1 }}><h2 style={{ margin: 0, fontSize: '1rem' }}>Sanity, Webflow, Shopify Blog</h2><span style={styles.sub}>Segera hadir — hubungi 3Our bila butuh lebih cepat.</span></div><span className="badge badge-secondary">Soon</span></div>
+        <div style={styles.cardHead}><div style={{ ...styles.cmsIcon, backgroundColor: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.3)' }}><Globe size={18} color="#f43f5e" /></div><div style={{ flex: 1 }}><h2 style={{ margin: 0, fontSize: '1rem' }}>Webflow, Shopify Blog, Ghost</h2><span style={styles.sub}>Segera hadir — hubungi 3Our bila butuh lebih cepat.</span></div><span className="badge badge-secondary">Soon</span></div>
       </div>
 
       <div className="grid-2" style={{ marginTop: '1.5rem', alignItems: 'start' }}>
