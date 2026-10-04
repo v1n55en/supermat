@@ -1,6 +1,6 @@
 # Supermat — SEO Article Automation by 3Our
 
-Web app SaaS: user mendaftar, menghubungkan **WordPress** atau **Wix** miliknya, memasukkan keyword → 3Our (lewat n8n) meriset tren & volume, menulis artikel SEO dengan AI, lalu artikel direview di web (paket Pro) dan diterbitkan ke CMS user. Semua API key riset/AI (SerpAPI, Ahrefs via RapidAPI, Gemini) milik 3Our — user cukup berlangganan ke 3Our (billing masih **dummy/simulasi**).
+Web app SaaS: user mendaftar, menghubungkan **WordPress**, **Wix**, atau **Sanity** miliknya, memasukkan keyword → 3Our (lewat n8n) meriset tren & volume, menulis artikel SEO dengan AI, lalu artikel direview di web (paket Pro) dan diterbitkan ke CMS user. Semua API key riset/AI (SerpAPI, Ahrefs via RapidAPI, Gemini) milik 3Our — user cukup berlangganan ke 3Our (billing masih **dummy/simulasi**).
 
 ```
 frontend (React/Vite, Vercel)  →  backend (Express, Vercel)  →  n8n 3Our (webhook "Supermat API")  →  SerpAPI / RapidAPI / Gemini
@@ -12,15 +12,15 @@ frontend (React/Vite, Vercel)  →  backend (Express, Vercel)  →  n8n 3Our (we
 
 | Folder | Isi |
 |---|---|
-| `frontend/` | React 19 + Vite. Login/daftar, Kontrol Automasi (keyword, run, review drawer), Pengaturan CMS & API (WordPress/Wix + tes koneksi, API key 3Our), Langganan (dummy checkout), Analitik. |
+| `frontend/` | React 19 + Vite. Login/daftar, Kontrol Automasi (keyword, run, review drawer), Pengaturan CMS & API (WordPress/Wix/Sanity + tes koneksi, API key 3Our), Langganan (dummy checkout), Analitik. |
 | `backend/` | Express (ESM). JWT auth, Supabase (fallback `database.json` untuk dev), proxy ke n8n dengan `X-Supermat-Key`, kredensial CMS per user, kuota paket, public API `/api/v1/*`, cron jadwal. |
-| `automation/` | Sumber & hasil build workflow n8n: `build-workflows.mjs` + `src/*.js` → `n8n-main-workflow.json`, `n8n-adapter-wordpress.json`, `n8n-adapter-wix.json` (import ke n8n). `n8n-adapter-sanity.json` = adapter lama (legacy). |
+| `automation/` | Sumber & hasil build workflow n8n: `build-workflows.mjs` + `src/*.js` → `n8n-main-workflow.json`, `n8n-adapter-wordpress.json`, `n8n-adapter-wix.json`, `n8n-adapter-sanity.json` (import ke n8n). |
 | `docs/` | Spesifikasi desain. |
 
 ## Alur produk
 
 1. **Daftar/Masuk** → backend membuat akun (plan `free`, API key `spm_live_…`).
-2. **Pengaturan CMS** → simpan kredensial WordPress (URL, user, Application Password) atau Wix (Site ID, API key) → backend langsung **tes koneksi** (`/wp-json/wp/v2/users/me` atau `blog/v3/posts`) dan menandai *verified*.
+2. **Pengaturan CMS** → simpan kredensial WordPress (URL, user, Application Password) atau Wix (Site ID, API key) atau Sanity (Project ID, dataset, token Editor, opsional URL Studio / document type / field isi / pola URL publik) → backend langsung **tes koneksi** (`/wp-json/wp/v2/users/me`, `blog/v3/posts`, atau query + dry-run mutation Sanity) dan menandai *verified*.
 3. **Kontrol Automasi** → tambah keyword → backend `POST n8n /webhook/supermat-trigger` → n8n: Google Trends + Autocomplete (SerpAPI) → Ahrefs (RapidAPI) → pilih target keyword → Gemini (+ tool Google Search) → artikel JSON.
    - **Free**: artikel langsung dikirim sebagai **draf** ke CMS (`action: draft`).
    - **Pro + Web Approver**: status `Review Ready` → user edit di drawer → **Simpan draf** / **Publikasikan** → backend `POST n8n /webhook/supermat-publish` dengan kredensial CMS user (diambil dari server, bukan dari browser).
@@ -35,6 +35,7 @@ Workflow sudah terpasang & aktif di `n8n.3ourasia.id`:
 - `Supermat API: Generate & Publish (3Our)` — id `9cXOiWyr2L2qdWrv` (webhook `supermat-trigger`, `supermat-publish`)
 - `Supermat Adapter: WordPress` — id `XokXcBPuDOlIexss`
 - `Supermat Adapter: Wix Blog` — id `54QOd6HkD0duCqGq`
+- `Supermat Adapter: Sanity` — id `yRYqxg0wtw0Q0C9t` (draf `drafts.<id>` via Mutations API; terbit via Mutations/Actions API; isi = Portable Text)
 
 API key 3Our ↔ n8n: kedua webhook memakai **Header Auth** dengan credential n8n **"Supermat API Key (Header)"** (header `X-Supermat-Key`). Nilainya hanya disimpan di credential itu dan di env Vercel `SUPERMAT_API_KEY` — keduanya harus sama. **Jangan tulis key di repo (repo ini publik).** Ganti key: edit credential di n8n → edit env di Vercel → Redeploy.
 
