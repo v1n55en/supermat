@@ -1,5 +1,5 @@
 // 3Our Supermat API — validasi API key & normalisasi input untuk endpoint PUBLISH
-// Body: { cmsType: 'wordpress'|'wix'|'sanity', action: 'draft'|'publish', cms: {...kredensial user...}, article: {...}, postId?: '' }
+// Body: { cmsType: 'wordpress'|'wix'|'sanity'|'shopify', action: 'draft'|'publish', cms: {...kredensial user...}, article: {...}, postId?: '' }
 // API key (header X-Supermat-Key) divalidasi oleh node Webhook (Header Auth, credential "Supermat API Key (Header)").
 // Request tanpa key yang benar sudah ditolak 403 sebelum sampai ke node ini. Key TIDAK ditulis di kode/repo.
 const headers = $json.headers || {};
@@ -30,19 +30,28 @@ const cms = {
     bodyField: str((cmsIn.sanity || {}).bodyField) || 'body',
     publicUrlPattern: str((cmsIn.sanity || {}).publicUrlPattern),
   },
+  shopify: {
+    shop: str((cmsIn.shopify || {}).shop).toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''),
+    accessToken: str((cmsIn.shopify || {}).accessToken),
+    clientId: str((cmsIn.shopify || {}).clientId),
+    clientSecret: str((cmsIn.shopify || {}).clientSecret),
+    blogId: str((cmsIn.shopify || {}).blogId),
+    authorName: str((cmsIn.shopify || {}).authorName),
+  },
 };
 const article = body.article && typeof body.article === 'object' ? body.article : null;
 const postId = str(body.postId || body.draftDocId || body.draftPostId);
 
 let statusCode = 200, error = '';
 if (!ok) { statusCode = 401; error = 'API key tidak valid. Kirim header X-Supermat-Key.'; }
-else if (!['wordpress', 'wix', 'sanity'].includes(cmsType)) { statusCode = 400; error = 'cmsType harus wordpress, wix, atau sanity.'; }
+else if (!['wordpress', 'wix', 'sanity', 'shopify'].includes(cmsType)) { statusCode = 400; error = 'cmsType harus wordpress, wix, sanity, atau shopify.'; }
 else if (!article && !postId) { statusCode = 400; error = 'Field "article" wajib diisi (atau postId untuk publish draf yang sudah ada).'; }
 else if (article && (!str(article.title) || !str(article.bodyMarkdown || article.body))) { statusCode = 400; error = 'article.title dan article.bodyMarkdown wajib diisi.'; }
 else if (cmsType === 'wordpress' && (!cms.wordpress.url || !cms.wordpress.user || !cms.wordpress.appPassword)) { statusCode = 400; error = 'Kredensial WordPress belum lengkap (url, user, appPassword).'; }
 else if (cmsType === 'wix' && (!cms.wix.siteId || !cms.wix.apiKey)) { statusCode = 400; error = 'Kredensial Wix belum lengkap (siteId, apiKey).'; }
 else if (cmsType === 'sanity' && (!cms.sanity.projectId || !cms.sanity.token)) { statusCode = 400; error = 'Kredensial Sanity belum lengkap (projectId, token).'; }
 else if (cmsType === 'sanity' && (!/^[a-z0-9]+$/i.test(cms.sanity.projectId) || !/^[a-z0-9_-]+$/i.test(cms.sanity.dataset) || !/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(cms.sanity.docType) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(cms.sanity.bodyField))) { statusCode = 400; error = 'Format Sanity tidak valid: Project ID (huruf/angka), dataset (huruf kecil, angka, - _), docType & bodyField (nama field).'; }
+else if (cmsType === 'shopify' && (!cms.shopify.shop || (!cms.shopify.accessToken && !(cms.shopify.clientId && cms.shopify.clientSecret)))) { statusCode = 400; error = 'Kredensial Shopify belum lengkap (shop + accessToken, atau shop + clientId + clientSecret).'; }
 if (cms.wordpress.url && !/^https?:\/\//i.test(cms.wordpress.url)) cms.wordpress.url = 'https://' + cms.wordpress.url;
 
 return [{ json: {
