@@ -136,12 +136,15 @@ app.post('/api/me/api-key/rotate', auth, wrap(async (req, res) => {
 }));
 
 // ---------- CMS connections ----------
-const CMS_TYPES = ['wordpress', 'wix'];
+const CMS_TYPES = ['wordpress', 'wix', 'sanity'];
+const CMS_NAME = { wordpress: 'situs WordPress', wix: 'Wix API', sanity: 'Sanity API' };
 function maskConn(c) {
   const cfg = c.config || {};
   const safe = c.cms_type === 'wordpress'
     ? { url: cfg.url, user: cfg.user, appPassword: mask(cfg.appPassword) }
-    : { siteId: cfg.siteId, apiKey: mask(cfg.apiKey), memberId: cfg.memberId || '' };
+    : c.cms_type === 'sanity'
+      ? { projectId: cfg.projectId, dataset: cfg.dataset, token: mask(cfg.token), studioUrl: cfg.studioUrl || '', docType: cfg.docType || 'post', bodyField: cfg.bodyField || 'body', publicUrlPattern: cfg.publicUrlPattern || '' }
+      : { siteId: cfg.siteId, apiKey: mask(cfg.apiKey), memberId: cfg.memberId || '' };
   return { cmsType: c.cms_type, config: safe, verified: !!c.verified, verifiedAt: c.verified_at, updatedAt: c.updated_at };
 }
 function normalizeConfig(type, input) {
@@ -150,11 +153,15 @@ function normalizeConfig(type, input) {
     let url = s(input.url); if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url; url = url.replace(/\/+$/, '');
     return { url, user: s(input.user), appPassword: s(input.appPassword) };
   }
+  if (type === 'sanity') {
+    let studioUrl = s(input.studioUrl); if (studioUrl && !/^https?:\/\//i.test(studioUrl)) studioUrl = 'https://' + studioUrl; studioUrl = studioUrl.replace(/\/+$/, '');
+    return { projectId: s(input.projectId).toLowerCase(), dataset: s(input.dataset) || 'production', token: s(input.token), studioUrl, docType: s(input.docType) || 'post', bodyField: s(input.bodyField) || 'body', publicUrlPattern: s(input.publicUrlPattern) };
+  }
   return { siteId: s(input.siteId), apiKey: s(input.apiKey), memberId: s(input.memberId) };
 }
 async function testConnection(type, cfg) {
   try { return await testConnectionInner(type, cfg); }
-  catch (e) { return { ok: false, message: 'Tidak bisa menghubungi ' + (type === 'wordpress' ? 'situs WordPress' : 'Wix API') + ': ' + e.message }; }
+  catch (e) { return { ok: false, message: 'Tidak bisa menghubungi ' + (CMS_NAME[type] || type) + ': ' + e.message }; }
 }
 async function testConnectionInner(type, cfg) {
   if (type === 'wordpress') {
@@ -166,12 +173,30 @@ async function testConnectionInner(type, cfg) {
     if (r.status === 404) return { ok: false, message: 'REST API tidak ditemukan. Pastikan URL benar dan /wp-json aktif.' };
     return { ok: false, message: 'Gagal: HTTP ' + r.status + ' ' + (j && j.message ? j.message : '') };
   }
+  if (type === 'sanity') return testSanity(cfg);
   if (!cfg.siteId || !cfg.apiKey) return { ok: false, message: 'Isi Site ID dan API Key Wix.' };
   const r = await fetch('https://www.wixapis.com/blog/v3/posts?paging.limit=1', { headers: { Authorization: cfg.apiKey, 'wix-site-id': cfg.siteId } });
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {}
   if (r.ok) return { ok: true, message: 'Terhubung ke Wix Blog' + (j && j.posts && j.posts.length ? ' (post terakhir: ' + j.posts[0].title + ')' : ' (belum ada post)'), meta: { memberId: j && j.posts && j.posts[0] ? j.posts[0].memberId : '' } };
   if (r.status === 401 || r.status === 403) return { ok: false, message: 'Wix menolak API key / Site ID (' + r.status + '). Buat API key di Wix Account → API Keys dengan izin Blog.' };
   return { ok: false, message: 'Gagal: HTTP ' + r.status + ' ' + (j && j.message ? j.message : '') };
+}
+// Sanity: baca jumlah dokumen (cek project/dataset/token) + dry-run mutation (cek izin tulis, tidak menyimpan apa pun)
+async function testSanity(cfg) {
+  if (!cfg.projectId || !cfg.token) return { ok: false, message: 'Isi Project ID dan API Token Sanity.' };
+  if (!/^[a-z0-9]+$/.test(cfg.projectId) || !/^[a-z0-9_-]+$/i.test(cfg.dataset)) return { ok: false, message: 'Format Project ID / dataset tidak valid.' };
+  if (!/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(cfg.docType) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(cfg.bodyField)) return { ok: false, message: 'Nama document type / field isi tidak valid.' };
+  const api = `https://${cfg.projectId}.api.sanity.io/v2025-02-19/data`;
+  const headers = { Authorization: 'Bearer ' + cfg.token, 'Content-Type': 'application/json' };
+  const q = await fetch(`${api}/query/${encodeURIComponent(cfg.dataset)}`, { method: 'POST', headers, body: JSON.stringify({ query: 'count(*[_type == $t])', params: { t: cfg.docType } }) });
+  const qj = await q.json().catch(() => ({}));
+  if (q.status === 401) return { ok: false, message: 'Token Sanity tidak valid (401). Buat token di sanity.io/manage → API → Tokens.' };
+  if (q.status === 404) return { ok: false, message: 'Project ID atau dataset tidak ditemukan (404).' };
+  if (!q.ok) return { ok: false, message: 'Gagal membaca Sanity: HTTP ' + q.status + ' ' + ((qj.error && (qj.error.description || qj.error)) || '') };
+  const m = await fetch(`${api}/mutate/${encodeURIComponent(cfg.dataset)}?dryRun=true`, { method: 'POST', headers, body: JSON.stringify({ mutations: [{ createOrReplace: { _id: 'drafts.supermat-connection-test', _type: cfg.docType, title: 'Supermat connection test' } }] }) });
+  if (m.status === 401 || m.status === 403) return { ok: false, message: 'Token Sanity hanya bisa membaca (' + m.status + '). Buat token dengan izin Editor.' };
+  if (!m.ok) { const mj = await m.json().catch(() => ({})); return { ok: false, message: 'Tes tulis Sanity gagal: HTTP ' + m.status + ' ' + ((mj.error && (mj.error.description || mj.error)) || '') }; }
+  return { ok: true, message: `Terhubung ke Sanity (${cfg.projectId}/${cfg.dataset}) — ${qj.result ?? 0} dokumen "${cfg.docType}", izin tulis OK` };
 }
 app.get('/api/cms', auth, wrap(async (req, res) => res.json({ cms: (await db.findMany('cms_connections', { user_id: req.user.id })).map(maskConn) })));
 app.put('/api/cms/:type', auth, wrap(async (req, res) => {
@@ -180,7 +205,7 @@ app.put('/api/cms/:type', auth, wrap(async (req, res) => {
   const existing = await db.findOne('cms_connections', { user_id: req.user.id, cms_type: type });
   const incoming = normalizeConfig(type, req.body.config || req.body);
   // field rahasia yang dikirim dalam bentuk mask ("••••") → pertahankan nilai lama
-  if (existing) { for (const k of ['appPassword', 'apiKey']) if (incoming[k] && incoming[k].includes('••••')) incoming[k] = existing.config[k]; }
+  if (existing) { for (const k of ['appPassword', 'apiKey', 'token']) if (incoming[k] && incoming[k].includes('••••')) incoming[k] = existing.config[k]; }
   const test = req.body.test !== false ? await testConnection(type, incoming) : { ok: false, message: 'Belum dites' };
   const row = await db.upsert('cms_connections', { user_id: req.user.id, cms_type: type }, { config: incoming, verified: test.ok, verified_at: test.ok ? new Date().toISOString() : null });
   if (test.ok && type === 'wix' && test.meta && test.meta.memberId && !incoming.memberId) await db.update('cms_connections', { id: row.id }, { config: { ...incoming, memberId: test.meta.memberId } });
