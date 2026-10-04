@@ -18,6 +18,7 @@ export const IDS = {
 };
 // ---- Kredensial milik 3Our di n8n (API SerpAPI, RapidAPI, Gemini) ----
 const CRED = {
+  supermatKey: { httpHeaderAuth: { id: 'yRMoELEk1ya3tXjx', name: 'Supermat API Key (Header)' } },
   serpapi: { httpQueryAuth: { id: 'E7NNgmviGDIm3aE3', name: 'SerpAPI (Query Auth)' } },
   rapidapi: { httpHeaderAuth: { id: 'DHz0caqWkCEuxqry', name: 'Rapidapi' } },
   gemini: { googlePalmApi: { id: 'X4qY80NDFbDxQZZU', name: 'Google Gemini(PaLM) Api Veri' } },
@@ -55,7 +56,7 @@ Backend untuk web app **Supermat** (supermat-three.vercel.app). Semua kunci rise
 **Auth & Normalize (Publish)** validasi key, cmsType, kredensial CMS & artikel → **CMS Router** → adapter sub-workflow (**WordPress**, **Wix**, Sanity legacy) → **Respond Publish**. Adapter mengembalikan format standar \`{ status, postId, draftEditUrl, publicUrl, postStatus, message }\`. \`action:'draft'\` menyimpan draf; \`action:'publish'\` menerbitkan (kirim \`postId\` untuk menerbitkan draf yang sudah ada).`),
 
     // ---- generate path ----
-    { id: 'n-webhook-generate', name: 'Webhook Generate', type: 'n8n-nodes-base.webhook', typeVersion: 2, position: [-460, Y1], webhookId: '4443f0f9-062a-45ed-891f-47479690bf5b', parameters: { httpMethod: 'POST', path: 'supermat-trigger', responseMode: 'responseNode', options: {} } },
+    { id: 'n-webhook-generate', name: 'Webhook Generate', type: 'n8n-nodes-base.webhook', typeVersion: 2, position: [-460, Y1], webhookId: '4443f0f9-062a-45ed-891f-47479690bf5b', parameters: { httpMethod: 'POST', path: 'supermat-trigger', authentication: 'headerAuth', responseMode: 'responseNode', options: {} }, credentials: CRED.supermatKey },
     codeNode('Auth & Normalize', [-240, Y1], code('main-auth-generate.js')),
     ifBool('Auth OK?', [-20, Y1], '={{ $json.ok }}'),
     respond('Respond Error', [200, Y1 + 200], ERR_BODY, ERR_CODE),
@@ -120,7 +121,7 @@ Kembalikan HANYA satu objek JSON valid: {"title": string, "slug": string, "excer
     respond('Respond AI Error', [2100, Y1 + 200], ERR_BODY, ERR_CODE),
 
     // ---- publish path ----
-    { id: 'n-webhook-publish', name: 'Webhook Publish', type: 'n8n-nodes-base.webhook', typeVersion: 2, position: [-460, Y2], webhookId: '12f6c704-5949-4562-b019-0697ff10a265', parameters: { httpMethod: 'POST', path: 'supermat-publish', responseMode: 'responseNode', options: {} } },
+    { id: 'n-webhook-publish', name: 'Webhook Publish', type: 'n8n-nodes-base.webhook', typeVersion: 2, position: [-460, Y2], webhookId: '12f6c704-5949-4562-b019-0697ff10a265', parameters: { httpMethod: 'POST', path: 'supermat-publish', authentication: 'headerAuth', responseMode: 'responseNode', options: {} }, credentials: CRED.supermatKey },
     codeNode('Auth & Normalize (Publish)', [-240, Y2], code('main-auth-publish.js')),
     ifBool('Auth OK (Publish)?', [-20, Y2], '={{ $json.ok }}'),
     respond('Respond Error (Publish)', [200, Y2 + 200], ERR_BODY, ERR_CODE),
