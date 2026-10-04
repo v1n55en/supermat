@@ -1,0 +1,340 @@
+{
+  "name": "Supermat Adapter: Shopify Blog",
+  "nodes": [
+    {
+      "id": "st-sticky-shopify",
+      "name": "Sticky Shopify",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -600,
+        60
+      ],
+      "parameters": {
+        "width": 2000,
+        "height": 560,
+        "color": 5,
+        "content": "## 🟩 Adapter Shopify Blog (GraphQL Admin API, kredensial user)\nInput dari Main: `{ cms:{shopify:{shop:'namatoko.myshopify.com', accessToken? | clientId+clientSecret, blogId?, authorName?}}, article, action, postId? }`.\n**Siapkan Shopify** validasi domain → bila pakai app Dev Dashboard (Client ID + Secret) **Ambil Token** `POST /admin/oauth/access_token` (client_credentials, token 24 jam) → **Shopify: Auth** → **Info Toko** (GraphQL: primary domain + daftar blog) → **Susun Artikel Shopify** (markdown → HTML; pilih blog; `articleCreate` atau `articleUpdate`) → **Kirim Artikel** → **Hasil Shopify**.\n`draft` = artikel tersembunyi (`isPublished:false`), `publish` = tampil. Tanpa artikel + postId → terbitkan artikel yang ada. Scope app: `write_content` (+ `read_content`). Link edit: `admin.shopify.com/store/<toko>/content/articles/<id>`."
+      }
+    },
+    {
+      "id": "n-shop-trigger",
+      "name": "Trigger dari Main",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -540,
+        360
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "n-siapkan-shopify",
+      "name": "Siapkan Shopify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        360
+      ],
+      "parameters": {
+        "jsCode": "// Adapter Shopify Blog — normalisasi kredensial user\n// Auth: Admin API access token (shpat_…, custom app lama) ATAU Client ID + Client Secret (app Dev Dashboard, ditukar jadi token 24 jam)\nconst IN = $input.first().json;\nconst S = (IN.cms || {}).shopify || {};\nlet shop = String(S.shop || '').trim().toLowerCase().replace(/^https?:\\/\\//, '').replace(/\\/.*$/, '');\nif (shop && !shop.includes('.')) shop = shop + '.myshopify.com';\nconst accessToken = String(S.accessToken || '').trim();\nconst clientId = String(S.clientId || '').trim();\nconst clientSecret = String(S.clientSecret || '').trim();\nlet needsExchange = !accessToken && !!clientId && !!clientSecret;\nlet preError = '';\nif (!/^[a-z0-9][a-z0-9-]*\\.myshopify\\.com$/.test(shop)) preError = 'Domain toko harus berformat namatoko.myshopify.com (bukan domain custom).';\nelse if (!accessToken && !needsExchange) preError = 'Isi Admin API access token, atau Client ID + Client Secret.';\n// jangan kirim rahasia ke host yang tidak valid\nif (preError) needsExchange = false;\nreturn [{ json: {\n  cmsType: 'shopify', action: IN.action === 'publish' ? 'publish' : 'draft',\n  shop, storeHandle: shop.replace(/\\.myshopify\\.com$/, ''), needsExchange, accessToken, clientId, clientSecret,\n  blogId: String(S.blogId || '').trim(), authorName: String(S.authorName || IN.clientName || 'Admin').trim() || 'Admin',\n  article: IN.article && typeof IN.article === 'object' ? IN.article : null,\n  postId: String(IN.postId || '').trim(),\n  preError, requestId: IN.requestId || '',\n} }];\n"
+      }
+    },
+    {
+      "id": "n-perlu-tukar-token-",
+      "name": "Perlu Tukar Token?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -100,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.needsExchange }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n-shopify-ambil-token",
+      "name": "Shopify: Ambil Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        120,
+        240
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 45000
+        },
+        "url": "={{ 'https://' + $json.shop + '/admin/oauth/access_token' }}",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "client_credentials"
+            },
+            {
+              "name": "client_id",
+              "value": "={{ $json.clientId }}"
+            },
+            {
+              "name": "client_secret",
+              "value": "={{ $json.clientSecret }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "n-shopify-auth",
+      "name": "Shopify: Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        360
+      ],
+      "parameters": {
+        "jsCode": "// Adapter Shopify — tentukan access token (langsung, atau hasil tukar Client Credentials)\nconst P = $('Siapkan Shopify').first().json;\nlet token = P.accessToken, preError = P.preError, tokenNote = '';\nif (!preError && P.needsExchange) {\n  const R = $('Shopify: Ambil Token').first().json || {};\n  const st = Number(R.statusCode || 0);\n  let b = R.body; if (typeof b === 'string') { try { b = JSON.parse(b); } catch (e) { b = { raw: b.slice(0, 200) }; } }\n  b = b || {};\n  if (st >= 200 && st < 300 && b.access_token) { token = b.access_token; tokenNote = 'client_credentials'; }\n  else if (st === 404) preError = 'Toko ' + P.shop + ' tidak ditemukan (404), atau app belum di-install di toko ini. Cek domain .myshopify.com.';\n  else preError = 'Gagal menukar Client ID/Secret jadi token (HTTP ' + (st || '-') + '): ' + (b.error_description || b.error || b.errors || b.raw || 'cek Client ID & Secret, dan pastikan app sudah di-install di toko ini (app & toko harus satu organisasi Shopify).');\n}\nif (preError) token = '';\nreturn [{ json: Object.assign({}, P, { token, tokenNote, preError, accessToken: undefined, clientSecret: undefined,\n  gqlUrl: 'https://' + (preError ? 'invalid-shop.myshopify.com' : P.shop) + '/admin/api/2026-07/graphql.json' }) }];\n"
+      }
+    },
+    {
+      "id": "n-shopify-info-toko",
+      "name": "Shopify: Info Toko",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        360
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 45000
+        },
+        "url": "={{ $json.gqlUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Shopify-Access-Token",
+              "value": "={{ $json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: \"{ shop { name primaryDomain { url } } blogs(first: 20) { nodes { id handle title } } }\" }) }}"
+      }
+    },
+    {
+      "id": "n-susun-artikel-shopify",
+      "name": "Susun Artikel Shopify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        360
+      ],
+      "parameters": {
+        "jsCode": "// Adapter Shopify — pilih blog, ubah markdown → HTML, susun mutation articleCreate / articleUpdate\nconst P = $('Shopify: Auth').first().json;\nconst R = $input.first().json || {};\n// ===== Markdown mini-parser (dipakai adapter WordPress & Wix) =====\n// parseMarkdown(md) -> [{type:'heading',level,inlines}|{type:'paragraph',inlines}|{type:'list',ordered,items:[inlines]}|{type:'quote',inlines}]\n// inlines: [{text, bold, italic, code, href}]\nfunction parseInline(s) {\n  const out = []; const src = String(s || '');\n  const push = (t, m) => { if (t) out.push(Object.assign({ text: t }, m || {})); };\n  const re = /(\\*\\*([^*]+)\\*\\*|__([^_]+)__|\\*([^*\\n]+)\\*|_([^_\\n]+)_|`([^`]+)`|\\[([^\\]]+)\\]\\(([^)\\s]+)\\))/g;\n  let m; let last = 0;\n  while ((m = re.exec(src))) {\n    push(src.slice(last, m.index));\n    if (m[2] || m[3]) push(m[2] || m[3], { bold: true });\n    else if (m[4] || m[5]) push(m[4] || m[5], { italic: true });\n    else if (m[6]) push(m[6], { code: true });\n    else if (m[7]) push(m[7], { href: m[8] });\n    last = m.index + m[0].length;\n  }\n  push(src.slice(last));\n  return out;\n}\nfunction parseMarkdown(md) {\n  const lines = String(md || '').replace(/\\r/g, '').split('\\n');\n  const blocks = []; let para = []; let list = null;\n  const flushPara = () => { if (para.length) { blocks.push({ type: 'paragraph', inlines: parseInline(para.join(' ')) }); para = []; } };\n  const flushList = () => { if (list) { blocks.push(list); list = null; } };\n  for (const raw of lines) {\n    const t = raw.trim();\n    if (!t) { flushPara(); flushList(); continue; }\n    let m;\n    if ((m = t.match(/^(#{1,6})\\s+(.*)$/))) { flushPara(); flushList(); blocks.push({ type: 'heading', level: Math.min(Math.max(m[1].length, 2), 4), inlines: parseInline(m[2].replace(/\\s#+$/, '')) }); continue; }\n    if ((m = t.match(/^[-*+]\\s+(.*)$/))) { flushPara(); if (!list || list.ordered) { flushList(); list = { type: 'list', ordered: false, items: [] }; } list.items.push(parseInline(m[1])); continue; }\n    if ((m = t.match(/^\\d+[.)]\\s+(.*)$/))) { flushPara(); if (!list || !list.ordered) { flushList(); list = { type: 'list', ordered: true, items: [] }; } list.items.push(parseInline(m[1])); continue; }\n    if ((m = t.match(/^>\\s?(.*)$/))) { flushPara(); flushList(); blocks.push({ type: 'quote', inlines: parseInline(m[1]) }); continue; }\n    if (/^(-{3,}|\\*{3,})$/.test(t)) { flushPara(); flushList(); continue; }\n    flushList(); para.push(t);\n  }\n  flushPara(); flushList();\n  return blocks;\n}\nconst escHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nfunction inlinesToHtml(inl) {\n  return inl.map(x => { let h = escHtml(x.text); if (x.code) h = '<code>' + h + '</code>'; if (x.bold) h = '<strong>' + h + '</strong>'; if (x.italic) h = '<em>' + h + '</em>'; if (x.href) h = '<a href=\"' + escHtml(x.href) + '\" target=\"_blank\" rel=\"noopener\">' + h + '</a>'; return h; }).join('');\n}\nfunction markdownToHtml(md) {\n  return parseMarkdown(md).map(b => {\n    if (b.type === 'heading') return '<h' + b.level + '>' + inlinesToHtml(b.inlines) + '</h' + b.level + '>';\n    if (b.type === 'quote') return '<blockquote><p>' + inlinesToHtml(b.inlines) + '</p></blockquote>';\n    if (b.type === 'list') return (b.ordered ? '<ol>' : '<ul>') + b.items.map(it => '<li>' + inlinesToHtml(it) + '</li>').join('') + (b.ordered ? '</ol>' : '</ul>');\n    return '<p>' + inlinesToHtml(b.inlines) + '</p>';\n  }).join('\\n');\n}\n// Ricos (Wix rich content)\nfunction markdownToRicos(md) {\n  let seq = 0; const nid = () => 'n' + (++seq).toString(36) + Date.now().toString(36).slice(-4);\n  const textNode = x => { const dec = []; if (x.bold) dec.push({ type: 'BOLD', fontWeightValue: 700 }); if (x.italic) dec.push({ type: 'ITALIC', italicData: true }); if (x.href) dec.push({ type: 'LINK', linkData: { link: { url: x.href, target: 'BLANK' } } }); return { type: 'TEXT', id: '', nodes: [], textData: { text: x.text, decorations: dec } }; };\n  const paragraph = inl => ({ type: 'PARAGRAPH', id: nid(), nodes: inl.map(textNode), paragraphData: {} });\n  const nodes = [];\n  for (const b of parseMarkdown(md)) {\n    if (b.type === 'heading') nodes.push({ type: 'HEADING', id: nid(), nodes: b.inlines.map(textNode), headingData: { level: b.level } });\n    else if (b.type === 'quote') nodes.push({ type: 'BLOCKQUOTE', id: nid(), nodes: [paragraph(b.inlines)], blockquoteData: {} });\n    else if (b.type === 'list') nodes.push({ type: b.ordered ? 'ORDERED_LIST' : 'BULLETED_LIST', id: nid(), nodes: b.items.map(it => ({ type: 'LIST_ITEM', id: nid(), nodes: [paragraph(it)] })), [b.ordered ? 'orderedListData' : 'bulletedListData']: { indentation: 0 } });\n    else nodes.push(paragraph(b.inlines));\n  }\n  return { nodes, metadata: { version: 1 } };\n}\n// Portable Text (Sanity block content)\nfunction markdownToPortableText(md) {\n  let seq = 0; const key = () => 'k' + (++seq).toString(36) + Math.random().toString(36).slice(2, 8);\n  const block = (inl, extra) => {\n    const markDefs = [];\n    const children = (inl.length ? inl : [{ text: '' }]).map(x => {\n      const marks = [];\n      if (x.bold) marks.push('strong'); if (x.italic) marks.push('em'); if (x.code) marks.push('code');\n      if (x.href) { const k = key(); markDefs.push({ _key: k, _type: 'link', href: x.href }); marks.push(k); }\n      return { _type: 'span', _key: key(), text: x.text, marks };\n    });\n    return Object.assign({ _type: 'block', _key: key(), style: 'normal', markDefs, children }, extra || {});\n  };\n  const out = [];\n  for (const b of parseMarkdown(md)) {\n    if (b.type === 'heading') out.push(block(b.inlines, { style: 'h' + b.level }));\n    else if (b.type === 'quote') out.push(block(b.inlines, { style: 'blockquote' }));\n    else if (b.type === 'list') for (const it of b.items) out.push(block(it, { listItem: b.ordered ? 'number' : 'bullet', level: 1 }));\n    else out.push(block(b.inlines));\n  }\n  return out;\n}\n\nlet preError = P.preError;\nlet blogs = [], primaryUrl = '';\nif (!preError) {\n  const st = Number(R.statusCode || 0);\n  let b = R.body; if (typeof b === 'string') { try { b = JSON.parse(b); } catch (e) { b = {}; } }\n  b = b || {};\n  if (st === 401) preError = 'Token Shopify tidak valid (401). Cek access token / Client ID & Secret.';\n  else if (st === 403) preError = 'Token Shopify tidak punya izin (403). Aktifkan scope write_content (dan read_content) lalu install ulang app.';\n  else if (st === 404) preError = 'Toko Shopify tidak ditemukan (404). Cek domain .myshopify.com.';\n  else if (!(st >= 200 && st < 300) || !b.data) preError = 'Gagal membaca toko Shopify: ' + (b.errors ? JSON.stringify(b.errors).slice(0, 200) : 'HTTP ' + st);\n  else { blogs = (b.data.blogs && b.data.blogs.nodes) || []; primaryUrl = ((b.data.shop || {}).primaryDomain || {}).url || ''; }\n}\nconst A = P.article; const publish = P.action === 'publish';\nlet blog = null;\nif (!preError) {\n  blog = P.blogId ? blogs.find(x => x.id === P.blogId || x.id.endsWith('/' + P.blogId) || x.handle === P.blogId) : blogs[0];\n  if (!blog && !P.postId) preError = P.blogId ? 'Blog \"' + P.blogId + '\" tidak ditemukan di toko.' : 'Toko belum punya blog. Buat dulu di Shopify Admin → Online Store → Blog posts → Manage blogs.';\n}\nconst articleGid = P.postId ? (P.postId.startsWith('gid://') ? P.postId : 'gid://shopify/Article/' + P.postId) : '';\nconst FIELDS = 'article { id handle title isPublished blog { handle } } userErrors { field message }';\nlet query, variables;\nif (A && A.title) {\n  const input = {\n    title: String(A.title),\n    handle: String(A.slug || '').trim() || undefined,\n    body: markdownToHtml(A.bodyMarkdown || A.body || ''),\n    summary: A.excerpt ? '<p>' + String(A.excerpt).replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</p>' : undefined,\n    tags: Array.isArray(A.keywords) ? A.keywords.slice(0, 8).map(String) : undefined,\n    isPublished: publish,\n  };\n  if (publish) input.publishDate = new Date().toISOString();\n  if (articleGid) { query = 'mutation($id: ID!, $article: ArticleUpdateInput!) { articleUpdate(id: $id, article: $article) { ' + FIELDS + ' } }'; variables = { id: articleGid, article: input }; }\n  else { input.blogId = blog && blog.id; input.author = { name: P.authorName }; query = 'mutation($article: ArticleCreateInput!) { articleCreate(article: $article) { ' + FIELDS + ' } }'; variables = { article: input }; }\n} else if (articleGid) {\n  query = 'mutation($id: ID!, $article: ArticleUpdateInput!) { articleUpdate(id: $id, article: $article) { ' + FIELDS + ' } }';\n  variables = { id: articleGid, article: { isPublished: true, publishDate: new Date().toISOString() } };\n} else preError = preError || 'Tidak ada artikel maupun postId untuk diproses.';\nreturn [{ json: { gqlUrl: P.gqlUrl, token: P.token, body: { query: query || '{ shop { name } }', variables: variables || {} },\n  preError, shop: P.shop, storeHandle: P.storeHandle, primaryUrl, blogHandle: blog ? blog.handle : '',\n  action: P.action, title: A ? A.title || '' : '', requestId: P.requestId } }];\n"
+      }
+    },
+    {
+      "id": "n-shopify-kirim-artikel",
+      "name": "Shopify: Kirim Artikel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        360
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 45000
+        },
+        "url": "={{ $json.gqlUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Shopify-Access-Token",
+              "value": "={{ $json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}"
+      }
+    },
+    {
+      "id": "n-hasil-shopify",
+      "name": "Hasil Shopify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1220,
+        360
+      ],
+      "parameters": {
+        "jsCode": "// Adapter Shopify — rapikan hasil mutation jadi format standar Supermat\nconst P = $('Susun Artikel Shopify').first().json;\nconst fail = (msg, st) => [{ json: { status: 'error', cmsType: 'shopify', action: P.action, httpStatus: st || 400, message: msg, requestId: P.requestId } }];\nif (P.preError) return fail(P.preError, 400);\nconst R = $input.first().json || {};\nconst st = Number(R.statusCode || 0);\nlet b = R.body; if (typeof b === 'string') { try { b = JSON.parse(b); } catch (e) { b = { raw: b.slice(0, 200) }; } }\nb = b || {};\nif (st === 401 || st === 403) return fail('Shopify menolak akses (' + st + '). Pastikan app punya scope write_content.', st);\nif (!(st >= 200 && st < 300)) return fail('Shopify error HTTP ' + (st || '-') + ': ' + (b.errors ? JSON.stringify(b.errors).slice(0, 200) : b.raw || ''), st || 502);\nif (b.errors && !b.data) return fail('GraphQL Shopify error: ' + JSON.stringify(b.errors).slice(0, 300), 400);\nconst payload = (b.data && (b.data.articleCreate || b.data.articleUpdate)) || {};\nconst ue = payload.userErrors || [];\nif (ue.length) return fail('Shopify menolak artikel: ' + ue.map(e => (e.field ? e.field.join('.') + ': ' : '') + e.message).join('; '), 400);\nconst a = payload.article;\nif (!a || !a.id) return fail('Respons Shopify tanpa artikel.', 502);\nconst num = String(a.id).split('/').pop();\nconst blogHandle = (a.blog && a.blog.handle) || P.blogHandle;\nconst base = (P.primaryUrl || ('https://' + P.shop)).replace(/\\/+$/, '');\nreturn [{ json: {\n  status: 'ok', cmsType: 'shopify', action: P.action,\n  postId: num, postStatus: a.isPublished ? 'publish' : 'draft',\n  draftEditUrl: 'https://admin.shopify.com/store/' + P.storeHandle + '/content/articles/' + num,\n  publicUrl: a.isPublished ? base + '/blogs/' + blogHandle + '/' + a.handle : '',\n  previewUrl: '', title: a.title || P.title,\n  message: a.isPublished ? 'Artikel terbit di blog Shopify.' : 'Draf (tersembunyi) tersimpan di blog Shopify.',\n  requestId: P.requestId,\n} }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Trigger dari Main": {
+      "main": [
+        [
+          {
+            "node": "Siapkan Shopify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Siapkan Shopify": {
+      "main": [
+        [
+          {
+            "node": "Perlu Tukar Token?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perlu Tukar Token?": {
+      "main": [
+        [
+          {
+            "node": "Shopify: Ambil Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Shopify: Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify: Ambil Token": {
+      "main": [
+        [
+          {
+            "node": "Shopify: Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify: Auth": {
+      "main": [
+        [
+          {
+            "node": "Shopify: Info Toko",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify: Info Toko": {
+      "main": [
+        [
+          {
+            "node": "Susun Artikel Shopify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Susun Artikel Shopify": {
+      "main": [
+        [
+          {
+            "node": "Shopify: Kirim Artikel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify: Kirim Artikel": {
+      "main": [
+        [
+          {
+            "node": "Hasil Shopify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

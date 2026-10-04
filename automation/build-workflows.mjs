@@ -15,6 +15,7 @@ export const IDS = {
   wordpress: 'XokXcBPuDOlIexss',
   wix: '54QOd6HkD0duCqGq',
   sanity: 'yRYqxg0wtw0Q0C9t',
+  shopify: 'mPOJqWf1KKYoK1Bp',
 };
 // ---- Kredensial milik 3Our di n8n (API SerpAPI, RapidAPI, Gemini) ----
 const CRED = {
@@ -40,20 +41,20 @@ const ERR_CODE = '={{ $json.statusCode || 400 }}';
 function buildMain() {
   const Y1 = 300, Y2 = 900;
   const nodes = [
-    sticky('Sticky Overview', [-1120, 60], 560, 1180, 7, `## 🚀 3Our Supermat API (SEO Article Automation)
+    sticky('Sticky Overview', [-1120, 60], 560, 1420, 7, `## 🚀 3Our Supermat API (SEO Article Automation)
 Backend untuk web app **Supermat** (supermat-three.vercel.app). Semua kunci riset & AI (SerpAPI, RapidAPI/Ahrefs, Gemini) milik 3Our dan tersimpan sebagai credential n8n — user cukup pakai **API key 3Our** (header \`X-Supermat-Key\`) + kredensial CMS mereka sendiri.
 
 **Endpoint**
 - \`POST /webhook/supermat-trigger\` — riset + tulis artikel. Body: \`{ keyword, Geo, Ln, Client_Name, niche?, tone?, wordCount? }\` → \`{ status, article:{title, slug, excerpt, bodyMarkdown, keywords, primaryKeyword, searchVolume, difficulty, …}, research }\`
-- \`POST /webhook/supermat-publish\` — kirim artikel ke CMS user. Body: \`{ cmsType:'wordpress'|'wix'|'sanity', action:'draft'|'publish', cms:{ wordpress:{url,user,appPassword} | wix:{siteId,apiKey} | sanity:{projectId,dataset,token,studioUrl?,docType?,bodyField?,publicUrlPattern?} }, article, postId? }\` → \`{ status, postId, draftEditUrl, publicUrl, message }\`
+- \`POST /webhook/supermat-publish\` — kirim artikel ke CMS user. Body: \`{ cmsType:'wordpress'|'wix'|'sanity'|'shopify', action:'draft'|'publish', cms:{ wordpress:{url,user,appPassword} | wix:{siteId,apiKey} | sanity:{projectId,dataset,token,…} | shopify:{shop,accessToken|clientId+clientSecret,blogId?} }, article, postId? }\` → \`{ status, postId, draftEditUrl, publicUrl, message }\`
 
 **API key** divalidasi node Webhook (Header Auth, credential *Supermat API Key (Header)*). Backend Supermat menyimpan key yang sama di env Vercel \`SUPERMAT_API_KEY\`.
 
 **Error** selalu dibalas JSON \`{ status:'error', message }\` dengan HTTP code yang sesuai (401/400/502).`),
     sticky('Sticky Generate', [-520, 60], 2980, 560, 6, `## ① GENERATE — riset keyword → artikel (Gemini)
 **Auth & Normalize** cek API key + rapikan input → **Riset Google Trends** (SerpAPI, related queries 3 bulan, geo/bahasa user) → **Riset Autocomplete** (SerpAPI Google Autocomplete, cadangan bila Trends kosong) → **Pilih Kandidat** (seed keyword + maks 3 query relevan) → **Riset SVolume** (Ahrefs via RapidAPI, per kandidat) → **Tentukan Target** (volume terbesar; fallback seed) → **AI Agent** (Gemini + tool Google Search SerpAPI untuk fakta, geo/bahasa mengikuti user, CTA ke brand user) → **Susun Artikel** → **Respond Generate**. Semua call eksternal *continue on error* supaya artikel tetap jadi walau riset gagal.`),
-    sticky('Sticky Publish', [-520, 700], 2980, 520, 4, `## ② PUBLISH — kirim artikel ke CMS user
-**Auth & Normalize (Publish)** validasi key, cmsType, kredensial CMS & artikel → **CMS Router** → adapter sub-workflow (**WordPress**, **Wix**, **Sanity**) → **Respond Publish**. Adapter mengembalikan format standar \`{ status, postId, draftEditUrl, publicUrl, postStatus, message }\`. \`action:'draft'\` menyimpan draf; \`action:'publish'\` menerbitkan (kirim \`postId\` untuk menerbitkan draf yang sudah ada).`),
+    sticky('Sticky Publish', [-520, 700], 2980, 780, 4, `## ② PUBLISH — kirim artikel ke CMS user
+**Auth & Normalize (Publish)** validasi key, cmsType, kredensial CMS & artikel → **CMS Router** → adapter sub-workflow (**WordPress**, **Wix**, **Sanity**, **Shopify Blog**) → **Respond Publish**. Adapter mengembalikan format standar \`{ status, postId, draftEditUrl, publicUrl, postStatus, message }\`. \`action:'draft'\` menyimpan draf; \`action:'publish'\` menerbitkan (kirim \`postId\` untuk menerbitkan draf yang sudah ada).`),
 
     // ---- generate path ----
     { id: 'n-webhook-generate', name: 'Webhook Generate', type: 'n8n-nodes-base.webhook', typeVersion: 2, position: [-460, Y1], webhookId: '4443f0f9-062a-45ed-891f-47479690bf5b', parameters: { httpMethod: 'POST', path: 'supermat-trigger', authentication: 'headerAuth', responseMode: 'responseNode', options: {} }, credentials: CRED.supermatKey },
@@ -129,11 +130,13 @@ Kembalikan HANYA satu objek JSON valid: {"title": string, "slug": string, "excer
       { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 }, conditions: [{ id: 'r1', leftValue: '={{ $json.cmsType }}', rightValue: 'wordpress', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'wordpress' },
       { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 }, conditions: [{ id: 'r2', leftValue: '={{ $json.cmsType }}', rightValue: 'wix', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'wix' },
       { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 }, conditions: [{ id: 'r3', leftValue: '={{ $json.cmsType }}', rightValue: 'sanity', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'sanity' },
+      { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 }, conditions: [{ id: 'r4', leftValue: '={{ $json.cmsType }}', rightValue: 'shopify', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'shopify' },
     ] }, options: { fallbackOutput: 'extra' } } },
     { id: 'n-adapter-wp', name: 'Adapter: WordPress', type: 'n8n-nodes-base.executeWorkflow', typeVersion: 1, position: [480, Y2 - 160], parameters: { workflowId: IDS.wordpress, options: {} } },
     { id: 'n-adapter-wix', name: 'Adapter: Wix', type: 'n8n-nodes-base.executeWorkflow', typeVersion: 1, position: [480, Y2], parameters: { workflowId: IDS.wix, options: {} } },
     { id: 'n-adapter-sanity', name: 'Adapter: Sanity', type: 'n8n-nodes-base.executeWorkflow', typeVersion: 1, position: [480, Y2 + 160], parameters: { workflowId: IDS.sanity, options: {} } },
-    respond('Respond CMS Tidak Didukung', [480, Y2 + 320], "={{ JSON.stringify({ status: 'error', message: 'cmsType tidak didukung: ' + $json.cmsType }) }}", '400'),
+    { id: 'n-adapter-shopify', name: 'Adapter: Shopify', type: 'n8n-nodes-base.executeWorkflow', typeVersion: 1, position: [480, Y2 + 320], parameters: { workflowId: IDS.shopify, options: {} } },
+    respond('Respond CMS Tidak Didukung', [480, Y2 + 480], "={{ JSON.stringify({ status: 'error', message: 'cmsType tidak didukung: ' + $json.cmsType }) }}", '400'),
     codeNode('Rapikan Hasil Publish', [740, Y2], `// Samakan format hasil adapter + tentukan HTTP code
 const r = $input.first().json || {};
 const ok = r.status === 'ok' || r.status === 'success';
@@ -159,8 +162,8 @@ return [{ json: {
       ['Riset Google Trends', 'Riset Autocomplete'], ['Riset Autocomplete', 'Pilih Kandidat'], ['Pilih Kandidat', 'Riset SVolume'], ['Riset SVolume', 'Tentukan Target'], ['Tentukan Target', 'AI Agent'], ['AI Agent', 'Susun Artikel'],
       ['Susun Artikel', 'Artikel OK?'], ['Artikel OK?', 'Respond Generate', 0], ['Artikel OK?', 'Respond AI Error', 1],
       ['Webhook Publish', 'Auth & Normalize (Publish)'], ['Auth & Normalize (Publish)', 'Auth OK (Publish)?'], ['Auth OK (Publish)?', 'CMS Router', 0], ['Auth OK (Publish)?', 'Respond Error (Publish)', 1],
-      ['CMS Router', 'Adapter: WordPress', 0], ['CMS Router', 'Adapter: Wix', 1], ['CMS Router', 'Adapter: Sanity', 2], ['CMS Router', 'Respond CMS Tidak Didukung', 3],
-      ['Adapter: WordPress', 'Rapikan Hasil Publish'], ['Adapter: Wix', 'Rapikan Hasil Publish'], ['Adapter: Sanity', 'Rapikan Hasil Publish'], ['Rapikan Hasil Publish', 'Respond Publish'],
+      ['CMS Router', 'Adapter: WordPress', 0], ['CMS Router', 'Adapter: Wix', 1], ['CMS Router', 'Adapter: Sanity', 2], ['CMS Router', 'Adapter: Shopify', 3], ['CMS Router', 'Respond CMS Tidak Didukung', 4],
+      ['Adapter: WordPress', 'Rapikan Hasil Publish'], ['Adapter: Wix', 'Rapikan Hasil Publish'], ['Adapter: Sanity', 'Rapikan Hasil Publish'], ['Adapter: Shopify', 'Rapikan Hasil Publish'], ['Rapikan Hasil Publish', 'Respond Publish'],
     ]),
     'Gemini Writer': { ai_languageModel: [[{ node: 'AI Agent', type: 'ai_languageModel', index: 0 }]] },
     'Google Search Riset': { ai_tool: [[{ node: 'AI Agent', type: 'ai_tool', index: 0 }]] },
@@ -240,7 +243,32 @@ Input dari Main: \`{ cms:{sanity:{projectId, dataset, token, studioUrl?, docType
   return { name: 'Supermat Adapter: Sanity', nodes, connections: conn([['Trigger dari Main', 'Siapkan Sanity'], ['Siapkan Sanity', 'Sanity: Kirim'], ['Sanity: Kirim', 'Hasil Sanity']]), settings: { executionOrder: 'v1' } };
 }
 
-const out = { 'n8n-main-workflow.json': buildMain(), 'n8n-adapter-wordpress.json': buildWordPress(), 'n8n-adapter-wix.json': buildWix(), 'n8n-adapter-sanity.json': buildSanity() };
+// =====================================================================
+// ADAPTER SHOPIFY BLOG
+// =====================================================================
+function buildShopify() {
+  const Y = 360;
+  const http = (name, pos, extra) => ({ id: 'n-' + name.replace(/\W+/g, '-').toLowerCase(), name, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: pos, onError: 'continueRegularOutput', parameters: Object.assign({ method: 'POST', options: { response: { response: { fullResponse: true, neverError: true } }, timeout: 45000 } }, extra) });
+  const gql = (name, pos, bodyExpr) => http(name, pos, { url: '={{ $json.gqlUrl }}', sendHeaders: true, headerParameters: { parameters: [{ name: 'X-Shopify-Access-Token', value: '={{ $json.token }}' }, { name: 'Content-Type', value: 'application/json' }] }, sendBody: true, specifyBody: 'json', jsonBody: bodyExpr });
+  const nodes = [
+    sticky('Sticky Shopify', [-600, 60], 2000, 560, 5, `## 🟩 Adapter Shopify Blog (GraphQL Admin API, kredensial user)
+Input dari Main: \`{ cms:{shopify:{shop:'namatoko.myshopify.com', accessToken? | clientId+clientSecret, blogId?, authorName?}}, article, action, postId? }\`.
+**Siapkan Shopify** validasi domain → bila pakai app Dev Dashboard (Client ID + Secret) **Ambil Token** \`POST /admin/oauth/access_token\` (client_credentials, token 24 jam) → **Shopify: Auth** → **Info Toko** (GraphQL: primary domain + daftar blog) → **Susun Artikel Shopify** (markdown → HTML; pilih blog; \`articleCreate\` atau \`articleUpdate\`) → **Kirim Artikel** → **Hasil Shopify**.
+\`draft\` = artikel tersembunyi (\`isPublished:false\`), \`publish\` = tampil. Tanpa artikel + postId → terbitkan artikel yang ada. Scope app: \`write_content\` (+ \`read_content\`). Link edit: \`admin.shopify.com/store/<toko>/content/articles/<id>\`.`),
+    { id: 'n-shop-trigger', name: 'Trigger dari Main', type: 'n8n-nodes-base.executeWorkflowTrigger', typeVersion: 1, position: [-540, Y], parameters: {} },
+    codeNode('Siapkan Shopify', [-320, Y], code('shopify-siapkan.js')),
+    ifBool('Perlu Tukar Token?', [-100, Y], '={{ $json.needsExchange }}'),
+    http('Shopify: Ambil Token', [120, Y - 120], { url: "={{ 'https://' + $json.shop + '/admin/oauth/access_token' }}", sendBody: true, contentType: 'form-urlencoded', bodyParameters: { parameters: [{ name: 'grant_type', value: 'client_credentials' }, { name: 'client_id', value: '={{ $json.clientId }}' }, { name: 'client_secret', value: '={{ $json.clientSecret }}' }] } }),
+    codeNode('Shopify: Auth', [340, Y], code('shopify-auth.js')),
+    gql('Shopify: Info Toko', [560, Y], '={{ JSON.stringify({ query: "{ shop { name primaryDomain { url } } blogs(first: 20) { nodes { id handle title } } }" }) }}'),
+    codeNode('Susun Artikel Shopify', [780, Y], code('shopify-susun.js')),
+    gql('Shopify: Kirim Artikel', [1000, Y], '={{ JSON.stringify($json.body) }}'),
+    codeNode('Hasil Shopify', [1220, Y], code('shopify-hasil.js')),
+  ];
+  return { name: 'Supermat Adapter: Shopify Blog', nodes, connections: conn([['Trigger dari Main', 'Siapkan Shopify'], ['Siapkan Shopify', 'Perlu Tukar Token?'], ['Perlu Tukar Token?', 'Shopify: Ambil Token', 0], ['Perlu Tukar Token?', 'Shopify: Auth', 1], ['Shopify: Ambil Token', 'Shopify: Auth'], ['Shopify: Auth', 'Shopify: Info Toko'], ['Shopify: Info Toko', 'Susun Artikel Shopify'], ['Susun Artikel Shopify', 'Shopify: Kirim Artikel'], ['Shopify: Kirim Artikel', 'Hasil Shopify']]), settings: { executionOrder: 'v1' } };
+}
+
+const out = { 'n8n-main-workflow.json': buildMain(), 'n8n-adapter-wordpress.json': buildWordPress(), 'n8n-adapter-wix.json': buildWix(), 'n8n-adapter-sanity.json': buildSanity(), 'n8n-adapter-shopify.json': buildShopify() };
 for (const [f, w] of Object.entries(out)) {
   fs.writeFileSync(path.join(here, f), JSON.stringify(w, null, 2));
   console.log('wrote', f, w.nodes.length, 'nodes');
