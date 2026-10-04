@@ -62,3 +62,25 @@ function markdownToRicos(md) {
   }
   return { nodes, metadata: { version: 1 } };
 }
+// Portable Text (Sanity block content)
+function markdownToPortableText(md) {
+  let seq = 0; const key = () => 'k' + (++seq).toString(36) + Math.random().toString(36).slice(2, 8);
+  const block = (inl, extra) => {
+    const markDefs = [];
+    const children = (inl.length ? inl : [{ text: '' }]).map(x => {
+      const marks = [];
+      if (x.bold) marks.push('strong'); if (x.italic) marks.push('em'); if (x.code) marks.push('code');
+      if (x.href) { const k = key(); markDefs.push({ _key: k, _type: 'link', href: x.href }); marks.push(k); }
+      return { _type: 'span', _key: key(), text: x.text, marks };
+    });
+    return Object.assign({ _type: 'block', _key: key(), style: 'normal', markDefs, children }, extra || {});
+  };
+  const out = [];
+  for (const b of parseMarkdown(md)) {
+    if (b.type === 'heading') out.push(block(b.inlines, { style: 'h' + b.level }));
+    else if (b.type === 'quote') out.push(block(b.inlines, { style: 'blockquote' }));
+    else if (b.type === 'list') for (const it of b.items) out.push(block(it, { listItem: b.ordered ? 'number' : 'bullet', level: 1 }));
+    else out.push(block(b.inlines));
+  }
+  return out;
+}

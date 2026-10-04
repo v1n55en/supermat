@@ -26,6 +26,9 @@ const cms = {
     dataset: str((cmsIn.sanity || {}).dataset || body.dataset) || 'production',
     token: str((cmsIn.sanity || {}).token || body.authToken),
     studioUrl: str((cmsIn.sanity || {}).studioUrl || body.studioUrl),
+    docType: str((cmsIn.sanity || {}).docType) || 'post',
+    bodyField: str((cmsIn.sanity || {}).bodyField) || 'body',
+    publicUrlPattern: str((cmsIn.sanity || {}).publicUrlPattern),
   },
 };
 const article = body.article && typeof body.article === 'object' ? body.article : null;
@@ -39,6 +42,7 @@ else if (article && (!str(article.title) || !str(article.bodyMarkdown || article
 else if (cmsType === 'wordpress' && (!cms.wordpress.url || !cms.wordpress.user || !cms.wordpress.appPassword)) { statusCode = 400; error = 'Kredensial WordPress belum lengkap (url, user, appPassword).'; }
 else if (cmsType === 'wix' && (!cms.wix.siteId || !cms.wix.apiKey)) { statusCode = 400; error = 'Kredensial Wix belum lengkap (siteId, apiKey).'; }
 else if (cmsType === 'sanity' && (!cms.sanity.projectId || !cms.sanity.token)) { statusCode = 400; error = 'Kredensial Sanity belum lengkap (projectId, token).'; }
+else if (cmsType === 'sanity' && (!/^[a-z0-9]+$/i.test(cms.sanity.projectId) || !/^[a-z0-9_-]+$/i.test(cms.sanity.dataset) || !/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(cms.sanity.docType) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(cms.sanity.bodyField))) { statusCode = 400; error = 'Format Sanity tidak valid: Project ID (huruf/angka), dataset (huruf kecil, angka, - _), docType & bodyField (nama field).'; }
 if (cms.wordpress.url && !/^https?:\/\//i.test(cms.wordpress.url)) cms.wordpress.url = 'https://' + cms.wordpress.url;
 
 return [{ json: {
@@ -46,8 +50,5 @@ return [{ json: {
   cmsType, action, cms, postId,
   article: article ? Object.assign({}, article, { bodyMarkdown: str(article.bodyMarkdown || article.body) }) : null,
   clientName: str(body.clientName || body.Client_Name || 'Brand Anda'),
-  // kompatibilitas adapter Sanity lama
-  projectId: cms.sanity.projectId, authToken: cms.sanity.token, draftDocId: cmsType === 'sanity' ? postId : '',
-  telegramChatId: '',
   requestId: str(body.requestId) || ('pub_' + Date.now().toString(36)),
 } }];
