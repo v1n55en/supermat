@@ -136,12 +136,14 @@ app.post('/api/me/api-key/rotate', auth, wrap(async (req, res) => {
 }));
 
 // ---------- CMS connections ----------
-const CMS_TYPES = ['wordpress', 'wix', 'sanity'];
-const CMS_NAME = { wordpress: 'situs WordPress', wix: 'Wix API', sanity: 'Sanity API' };
+const CMS_TYPES = ['wordpress', 'wix', 'sanity', 'shopify'];
+const CMS_NAME = { wordpress: 'situs WordPress', wix: 'Wix API', sanity: 'Sanity API', shopify: 'Shopify Admin API' };
 function maskConn(c) {
   const cfg = c.config || {};
   const safe = c.cms_type === 'wordpress'
     ? { url: cfg.url, user: cfg.user, appPassword: mask(cfg.appPassword) }
+    : c.cms_type === 'shopify'
+      ? { shop: cfg.shop, accessToken: mask(cfg.accessToken), clientId: cfg.clientId || '', clientSecret: mask(cfg.clientSecret), blogId: cfg.blogId || '', authorName: cfg.authorName || '' }
     : c.cms_type === 'sanity'
       ? { projectId: cfg.projectId, dataset: cfg.dataset, token: mask(cfg.token), studioUrl: cfg.studioUrl || '', docType: cfg.docType || 'post', bodyField: cfg.bodyField || 'body', publicUrlPattern: cfg.publicUrlPattern || '' }
       : { siteId: cfg.siteId, apiKey: mask(cfg.apiKey), memberId: cfg.memberId || '' };
@@ -152,6 +154,10 @@ function normalizeConfig(type, input) {
   if (type === 'wordpress') {
     let url = s(input.url); if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url; url = url.replace(/\/+$/, '');
     return { url, user: s(input.user), appPassword: s(input.appPassword) };
+  }
+  if (type === 'shopify') {
+    let shop = s(input.shop).toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''); if (shop && !shop.includes('.')) shop += '.myshopify.com';
+    return { shop, accessToken: s(input.accessToken), clientId: s(input.clientId), clientSecret: s(input.clientSecret), blogId: s(input.blogId), authorName: s(input.authorName) };
   }
   if (type === 'sanity') {
     let studioUrl = s(input.studioUrl); if (studioUrl && !/^https?:\/\//i.test(studioUrl)) studioUrl = 'https://' + studioUrl; studioUrl = studioUrl.replace(/\/+$/, '');
@@ -174,6 +180,7 @@ async function testConnectionInner(type, cfg) {
     return { ok: false, message: 'Gagal: HTTP ' + r.status + ' ' + (j && j.message ? j.message : '') };
   }
   if (type === 'sanity') return testSanity(cfg);
+  if (type === 'shopify') return testShopify(cfg);
   if (!cfg.siteId || !cfg.apiKey) return { ok: false, message: 'Isi Site ID dan API Key Wix.' };
   const r = await fetch('https://www.wixapis.com/blog/v3/posts?paging.limit=1', { headers: { Authorization: cfg.apiKey, 'wix-site-id': cfg.siteId } });
   const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {}
@@ -198,6 +205,31 @@ async function testSanity(cfg) {
   if (!m.ok) { const mj = await m.json().catch(() => ({})); return { ok: false, message: 'Tes tulis Sanity gagal: HTTP ' + m.status + ' ' + ((mj.error && (mj.error.description || mj.error)) || '') }; }
   return { ok: true, message: `Terhubung ke Sanity (${cfg.projectId}/${cfg.dataset}) — ${qj.result ?? 0} dokumen "${cfg.docType}", izin tulis OK` };
 }
+// Shopify: (tukar Client ID/Secret → token 24 jam bila perlu) lalu baca toko, blog, dan scope app
+async function testShopify(cfg) {
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(cfg.shop || '')) return { ok: false, message: 'Domain toko harus berformat namatoko.myshopify.com (lihat Settings → Domains di Shopify Admin).' };
+  let token = cfg.accessToken;
+  if (!token) {
+    if (!cfg.clientId || !cfg.clientSecret) return { ok: false, message: 'Isi Admin API access token, atau Client ID + Client Secret dari app Dev Dashboard.' };
+    const t = await fetch(`https://${cfg.shop}/admin/oauth/access_token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'client_credentials', client_id: cfg.clientId, client_secret: cfg.clientSecret }) });
+    const tj = await t.json().catch(() => ({}));
+    if (!t.ok || !tj.access_token) return { ok: false, message: 'Client ID/Secret ditolak (' + t.status + '): ' + (tj.error_description || tj.error || 'pastikan app sudah di-install di toko ini dan app & toko satu organisasi Shopify.') };
+    token = tj.access_token;
+  }
+  const r = await fetch(`https://${cfg.shop}/admin/api/2026-07/graphql.json`, { method: 'POST', headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' }, body: JSON.stringify({ query: '{ shop { name } blogs(first: 20) { nodes { id handle title } } currentAppInstallation { accessScopes { handle } } }' }) });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401) return { ok: false, message: 'Token Shopify tidak valid (401).' };
+  if (r.status === 403) return { ok: false, message: 'Token Shopify tidak punya izin (403). Tambahkan scope read_content & write_content lalu install ulang app.' };
+  if (r.status === 404) return { ok: false, message: 'Toko tidak ditemukan (404). Cek domain .myshopify.com.' };
+  if (!r.ok || !j.data) return { ok: false, message: 'Gagal membaca toko: ' + (j.errors ? JSON.stringify(j.errors).slice(0, 160) : 'HTTP ' + r.status) };
+  const scopes = ((j.data.currentAppInstallation || {}).accessScopes || []).map(x => x.handle);
+  if (scopes.length && !scopes.some(x => x === 'write_content' || x === 'write_online_store_pages')) return { ok: false, message: 'App belum punya scope write_content. Tambahkan di Dev Dashboard → Versions → Access scopes, rilis versi baru, lalu install ulang.' };
+  const blogs = (j.data.blogs && j.data.blogs.nodes) || [];
+  if (!blogs.length) return { ok: false, message: 'Terhubung ke ' + j.data.shop.name + ', tapi toko belum punya blog. Buat dulu di Online Store → Blog posts → Manage blogs.' };
+  const chosen = cfg.blogId ? blogs.find(b => b.id === cfg.blogId || b.id.endsWith('/' + cfg.blogId) || b.handle === cfg.blogId) : blogs[0];
+  if (!chosen) return { ok: false, message: 'Blog "' + cfg.blogId + '" tidak ditemukan. Blog yang ada: ' + blogs.map(b => b.handle).join(', ') };
+  return { ok: true, message: `Terhubung ke ${j.data.shop.name} — artikel masuk ke blog "${chosen.title}" (${blogs.length} blog tersedia: ${blogs.map(b => b.handle).join(', ')})`, meta: { blogs } };
+}
 app.get('/api/cms', auth, wrap(async (req, res) => res.json({ cms: (await db.findMany('cms_connections', { user_id: req.user.id })).map(maskConn) })));
 app.put('/api/cms/:type', auth, wrap(async (req, res) => {
   const type = String(req.params.type).toLowerCase();
@@ -205,7 +237,7 @@ app.put('/api/cms/:type', auth, wrap(async (req, res) => {
   const existing = await db.findOne('cms_connections', { user_id: req.user.id, cms_type: type });
   const incoming = normalizeConfig(type, req.body.config || req.body);
   // field rahasia yang dikirim dalam bentuk mask ("••••") → pertahankan nilai lama
-  if (existing) { for (const k of ['appPassword', 'apiKey', 'token']) if (incoming[k] && incoming[k].includes('••••')) incoming[k] = existing.config[k]; }
+  if (existing) { for (const k of ['appPassword', 'apiKey', 'token', 'accessToken', 'clientSecret']) if (incoming[k] && incoming[k].includes('••••')) incoming[k] = existing.config[k]; }
   const test = req.body.test !== false ? await testConnection(type, incoming) : { ok: false, message: 'Belum dites' };
   const row = await db.upsert('cms_connections', { user_id: req.user.id, cms_type: type }, { config: incoming, verified: test.ok, verified_at: test.ok ? new Date().toISOString() : null });
   if (test.ok && type === 'wix' && test.meta && test.meta.memberId && !incoming.memberId) await db.update('cms_connections', { id: row.id }, { config: { ...incoming, memberId: test.meta.memberId } });
